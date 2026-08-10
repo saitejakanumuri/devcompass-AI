@@ -1,0 +1,34 @@
+# Build target output
+**/target/
+*.class
+*.jar
+*.war
+*.ear
+
+# IDE & Editor files
+.idea/
+*.iml
+.vscode/
+*.classpath
+*.project
+*.settings/
+.factorypath
+/src/main/resources/*.yml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Tools & Local Binaries
+tools/
+*.session.sql
+
+# Environment Variables & Logs
+.env
+*.log
+*.tmp
+
+# Application Configuration & Secrets
+**/src/main/resources/application.yml
+application.yml
+

@@ -1,0 +1,65 @@
+server:
+  port: 8081
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: devcompass-backend
+  datasource:
+    url: ${RDS_JDBC_URL:${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/postgres?sslmode=require}}
+    username: ${RDS_USERNAME:${SPRING_DATASOURCE_USERNAME:postgres}}
+    password: ${RDS_PASSWORD:${SPRING_DATASOURCE_PASSWORD:postgres}}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      idle-timeout: 300000
+      connection-timeout: 20000
+  jackson:
+    serialization:
+      indent-output: true
+      write-dates-as-timestamps: false
+
+devcompass:
+  # Knowledge Sources Configuration
+  sources:
+    notion:
+      api-key: ${NOTION_API_KEY:xxxx}
+      main-page-id: ${NOTION_MAIN_PAGE_ID:xxx}
+
+  # LLM Answer Generator Configuration
+  ai:
+    provider: gemini # Options: gemini (Google Gemini), claude, openai, ollama
+    temperature: 0.2
+    max-tokens: 2048
+    gemini:
+      model: gemini-3.5-flash-lite
+      api-key: ${GEMINI_API_KEY:xxx}
+    openai:
+      model: gpt-4o
+      api-key: ${OPENAI_API_KEY:demo-key}
+
+  # Embedding Engine Configuration
+  embedding:
+    provider: ollama # Options: ollama, openai, local-hash
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      model: nomic-embed-text
+      dimension: 768
+    openai:
+      model: text-embedding-3-small
+      dimension: 1536
+
+  # Amazon RDS / PostgreSQL Vector DB Configuration
+  vector-store:
+    type: pgvector # Options: pgvector, in-memory, qdrant
+    dimension: 768
+    similarity-threshold: 0.70
+    pgvector:
+      table: vector_chunks
+
+  # Knowledge Ingestion Pipeline Settings
+  ingestion:
+    chunk-size: 512
+    chunk-overlap: 64
