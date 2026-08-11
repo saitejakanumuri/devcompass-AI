@@ -31,4 +31,5 @@ tools/
 # Application Configuration & Secrets
 **/src/main/resources/application.yml
 application.yml
+backend/NotionPersonalAccessToken.txt
 
