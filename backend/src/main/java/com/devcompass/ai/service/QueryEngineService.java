@@ -32,6 +32,8 @@ public class QueryEngineService {
         this.ingestionPipelineService = ingestionPipelineService;
     }
 
+    public static final double MIN_RELEVANCE_THRESHOLD = 0.30;
+
     public QueryResponse executeQuery(QueryRequest request) {
         long startTime = System.currentTimeMillis();
 
@@ -49,18 +51,12 @@ public class QueryEngineService {
 
         int topK = request.topK() != null ? request.topK() : 5;
 
-        // 1. Semantic Retrieval
+        // 1. Semantic Retrieval (Enforcing minimum 30.0% relevance score threshold)
         List<Chunk> retrievedChunks = vectorStore.similaritySearch(
             request.question(),
             topK,
-            0.50
+            MIN_RELEVANCE_THRESHOLD
         );
-
-        // Fallback to relaxed threshold if strict similarity threshold yields no chunks
-        if (retrievedChunks.isEmpty()) {
-            log.warn("[QueryEngineService] No chunks matched threshold 0.50 for query '{}'. Retrying with relaxed threshold 0.10...", request.question());
-            retrievedChunks = vectorStore.similaritySearch(request.question(), topK, 0.10);
-        }
 
         log.info("[QueryEngineService] Retrieved {} chunks from vector store for query '{}'", retrievedChunks.size(), request.question());
 

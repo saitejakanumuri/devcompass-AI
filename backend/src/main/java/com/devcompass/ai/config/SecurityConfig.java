@@ -22,8 +22,8 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/**", "/actuator/**", "/h2-console/**").permitAll()
-                .anyRequest().authenticated()
+                .requestMatchers("/api/**", "/actuator/**", "/h2-console/**", "/", "/index.html", "/static/**", "/*.js", "/*.css", "/*.ico", "/*.svg").permitAll()
+                .anyRequest().permitAll()
             );
 
         return http.build();

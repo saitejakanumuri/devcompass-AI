@@ -3,6 +3,8 @@ package com.devcompass.ai.pipeline;
 import com.devcompass.ai.model.Chunk;
 import com.devcompass.ai.model.SourceType;
 import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
@@ -10,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -17,9 +20,10 @@ import java.util.Map;
 @Primary
 public class PGVectorStore implements VectorStore {
 
+    private static final Logger log = LoggerFactory.getLogger(PGVectorStore.class);
+
     private final String tableName;
     private final int dimension;
-    private final InMemoryVectorStore delegateStore;
     private final EmbeddingGenerator embeddingGenerator;
 
     @Autowired(required = false)
@@ -30,18 +34,17 @@ public class PGVectorStore implements VectorStore {
     public PGVectorStore(
         @Value("${devcompass.vector-store.pgvector.table:vector_chunks}") String tableName,
         @Value("${devcompass.vector-store.dimension:768}") int dimension,
-        InMemoryVectorStore delegateStore,
         EmbeddingGenerator embeddingGenerator
     ) {
         this.tableName = tableName;
         this.dimension = dimension;
-        this.delegateStore = delegateStore;
         this.embeddingGenerator = embeddingGenerator;
     }
 
     @PostConstruct
     public void initDatabaseSchema() {
         if (jdbcTemplate == null) {
+            log.warn("[PGVectorStore] JdbcTemplate is null. PostgreSQL vector store will not initialize.");
             return;
         }
 
@@ -69,7 +72,7 @@ public class PGVectorStore implements VectorStore {
             String createIndexSql = """
                 CREATE INDEX IF NOT EXISTS idx_%s_embedding ON %s USING hnsw (embedding vector_cosine_ops);
                 """.formatted(tableName, tableName);
-            
+
             try {
                 jdbcTemplate.execute(createIndexSql);
             } catch (Exception ignored) {
@@ -77,9 +80,10 @@ public class PGVectorStore implements VectorStore {
             }
 
             dbInitialized = true;
+            log.info("[PGVectorStore] Successfully initialized PostgreSQL pgvector table: '{}' (Dimension: {})", tableName, dimension);
         } catch (Exception e) {
-            // Database offline or test profile - will use in-memory fallback
             dbInitialized = false;
+            log.error("[PGVectorStore] Failed to initialize PostgreSQL pgvector extension or table '{}'", tableName, e);
         }
     }
 
@@ -87,10 +91,8 @@ public class PGVectorStore implements VectorStore {
     public void saveChunks(List<Chunk> chunks) {
         if (chunks == null || chunks.isEmpty()) return;
 
-        // Always update delegate in-memory store for fallback
-        delegateStore.saveChunks(chunks);
-
         if (!dbInitialized || jdbcTemplate == null) {
+            log.warn("[PGVectorStore] Cannot save {} chunks because PostgreSQL DB is not initialized.", chunks.size());
             return;
         }
 
@@ -113,72 +115,107 @@ public class PGVectorStore implements VectorStore {
                 ps.setString(6, formatVectorSql(chunk.embedding()));
                 ps.setInt(7, chunk.tokenCount());
             });
+            log.info("[PGVectorStore] Saved/Updated {} vector chunks in PostgreSQL table '{}'", chunks.size(), tableName);
         } catch (Exception e) {
-            // Log fallback when RDS PostgreSQL is unreachable
+            log.error("[PGVectorStore] Failed to save chunks to PostgreSQL table '{}'", tableName, e);
         }
     }
 
     @Override
     public List<Chunk> similaritySearch(String queryText, int topK, double threshold) {
-        if (dbInitialized && jdbcTemplate != null) {
-            try {
-                float[] queryVector = embeddingGenerator.generateEmbedding(queryText);
-                String vectorStr = formatVectorSql(queryVector);
+        if (!dbInitialized || jdbcTemplate == null || queryText == null || queryText.isBlank()) {
+            log.warn("[PGVectorStore] DB search skipped. Initialized: {}, Query: '{}'", dbInitialized, queryText);
+            return List.of();
+        }
 
-                String searchSql = """
-                    SELECT id, document_id, document_title, source_type, content, token_count,
-                           1 - (embedding <=> ?::vector) AS score
-                    FROM %s
-                    WHERE 1 - (embedding <=> ?::vector) >= ?
-                    ORDER BY embedding <=> ?::vector ASC
-                    LIMIT ?;
-                    """.formatted(tableName);
+        try {
+            float[] queryVector = embeddingGenerator.generateEmbedding(queryText);
+            String vectorStr = formatVectorSql(queryVector);
 
-                List<Chunk> rdsResults = jdbcTemplate.query(
-                    searchSql,
-                    (rs, rowNum) -> new Chunk(
+            String searchSql = """
+                SELECT id, document_id, document_title, source_type, content, token_count,
+                       1 - (embedding <=> ?::vector) AS score
+                FROM %s
+                ORDER BY embedding <=> ?::vector ASC
+                LIMIT ?;
+                """.formatted(tableName);
+
+            String lowerQuery = queryText.toLowerCase();
+            String[] queryWords = lowerQuery.split("[\\s\\p{Punct}]+");
+
+            List<Chunk> rdsResults = jdbcTemplate.query(
+                searchSql,
+                (rs, rowNum) -> {
+                    double rawVectorScore = rs.getDouble("score");
+                    String content = rs.getString("content");
+                    String title = rs.getString("document_title");
+
+                    double textMatchBoost = 0.0;
+                    String lowerContent = content.toLowerCase();
+                    String lowerTitle = title.toLowerCase();
+
+                    for (String word : queryWords) {
+                        if (word.length() >= 2) {
+                            if (lowerTitle.contains(word)) textMatchBoost += 0.35;
+                            else if (lowerContent.contains(word)) textMatchBoost += 0.20;
+                        }
+                    }
+
+                    double normalizedTextBoost = Math.min(1.0, textMatchBoost);
+                    double adjustedVectorSim = (textMatchBoost == 0.0) ? rawVectorScore * 0.35 : rawVectorScore;
+                    double finalScore = Math.min(0.99, Math.max(0.0, adjustedVectorSim * 0.4 + normalizedTextBoost * 0.6));
+
+                    return new Chunk(
                         rs.getString("id"),
                         rs.getString("document_id"),
-                        rs.getString("document_title"),
+                        title,
                         SourceType.valueOf(rs.getString("source_type")),
-                        rs.getString("content"),
+                        content,
                         queryVector,
                         rs.getInt("token_count"),
                         Map.of("source", "Amazon RDS PostgreSQL pgvector"),
-                        rs.getDouble("score")
-                    ),
-                    vectorStr, vectorStr, threshold, topK
-                );
+                        finalScore
+                    );
+                },
+                vectorStr, vectorStr, topK * 2
+            );
 
-                if (!rdsResults.isEmpty()) {
-                    return rdsResults;
-                }
-            } catch (Exception e) {
-                // Fallback to delegate store if RDS query encounters connection/syntax issues
-            }
+            List<Chunk> filtered = rdsResults.stream()
+                .filter(c -> c.score() >= threshold)
+                .sorted(Comparator.comparingDouble(Chunk::score).reversed())
+                .limit(topK)
+                .toList();
+
+            log.info("[PGVectorStore] PostgreSQL DB semantic search returned {} chunks for query '{}'", filtered.size(), queryText);
+            return filtered;
+        } catch (Exception e) {
+            log.error("[PGVectorStore] Failed to execute DB semantic search query on table '{}'", tableName, e);
+            return List.of();
         }
-
-        return delegateStore.similaritySearch(queryText, topK, threshold);
     }
 
     @Override
     public int totalIndexedChunks() {
-        if (dbInitialized && jdbcTemplate != null) {
-            try {
-                Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + tableName, Integer.class);
-                if (count != null && count > 0) return count;
-            } catch (Exception ignored) {}
+        if (!dbInitialized || jdbcTemplate == null) {
+            return 0;
         }
-        return delegateStore.totalIndexedChunks();
+        try {
+            Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + tableName, Integer.class);
+            return count != null ? count : 0;
+        } catch (Exception e) {
+            log.error("[PGVectorStore] Failed to fetch total indexed count from DB", e);
+            return 0;
+        }
     }
 
     @Override
     public void clearStore() {
-        delegateStore.clearStore();
-        if (dbInitialized && jdbcTemplate != null) {
-            try {
-                jdbcTemplate.execute("TRUNCATE TABLE " + tableName);
-            } catch (Exception ignored) {}
+        if (!dbInitialized || jdbcTemplate == null) return;
+        try {
+            jdbcTemplate.execute("TRUNCATE TABLE " + tableName);
+            log.info("[PGVectorStore] Truncated PostgreSQL table '{}'", tableName);
+        } catch (Exception e) {
+            log.error("[PGVectorStore] Failed to truncate table '{}'", tableName, e);
         }
     }
 
@@ -203,16 +240,13 @@ public class PGVectorStore implements VectorStore {
 
     @Override
     public void deleteChunksByDocumentId(String documentId) {
-        if (documentId == null || documentId.isBlank()) return;
-
-        delegateStore.deleteChunksByDocumentId(documentId);
-
-        if (!dbInitialized || jdbcTemplate == null) return;
-
+        if (!dbInitialized || jdbcTemplate == null || documentId == null || documentId.isBlank()) return;
         try {
             String deleteSql = "DELETE FROM %s WHERE document_id = ?".formatted(tableName);
             jdbcTemplate.update(deleteSql, documentId);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.error("[PGVectorStore] Failed to delete chunks by document_id: {}", documentId, e);
+        }
     }
 
     private String formatVectorSql(float[] vector) {

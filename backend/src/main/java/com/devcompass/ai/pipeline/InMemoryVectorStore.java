@@ -31,25 +31,33 @@ public class InMemoryVectorStore implements VectorStore {
 
         float[] queryVector = embeddingGenerator.generateEmbedding(queryText);
         String lowerQuery = queryText.toLowerCase();
+        String[] queryWords = lowerQuery.split("[\\s\\p{Punct}]+");
 
         return storage.stream()
             .map(chunk -> {
                 double vectorSim = embeddingGenerator.calculateCosineSimilarity(queryVector, chunk.embedding());
-                // Hybrid boost for keyword matching in content/title
-                double textMatchBoost = 0.0;
-                if (chunk.content().toLowerCase().contains(lowerQuery)) textMatchBoost += 0.35;
-                if (chunk.documentTitle().toLowerCase().contains(lowerQuery)) textMatchBoost += 0.25;
-                
-                // Specific keyword boosts
-                if (lowerQuery.contains("seo") && chunk.content().toLowerCase().contains("seo")) textMatchBoost += 0.40;
-                if (lowerQuery.contains("tutor") && chunk.content().toLowerCase().contains("tutor")) textMatchBoost += 0.30;
-                if (lowerQuery.contains("deploy") && chunk.content().toLowerCase().contains("deploy")) textMatchBoost += 0.40;
-                if (lowerQuery.contains("auth") && chunk.content().toLowerCase().contains("auth")) textMatchBoost += 0.40;
-                if (lowerQuery.contains("table") && chunk.content().toLowerCase().contains("table")) textMatchBoost += 0.40;
+                String lowerContent = chunk.content().toLowerCase();
+                String lowerTitle = chunk.documentTitle().toLowerCase();
 
-                double finalScore = Math.min(0.99, vectorSim * 0.4 + textMatchBoost * 0.6);
+                // Dynamic keyword matching across all tokens in user query
+                double textMatchBoost = 0.0;
+                for (String word : queryWords) {
+                    if (word.length() >= 2) {
+                        if (lowerTitle.contains(word)) {
+                            textMatchBoost += 0.35;
+                        } else if (lowerContent.contains(word)) {
+                            textMatchBoost += 0.20;
+                        }
+                    }
+                }
+
+                double normalizedTextBoost = Math.min(1.0, textMatchBoost);
+                // If zero query tokens match title or content, apply damping penalty to baseline vector noise
+                double adjustedVectorSim = (textMatchBoost == 0.0) ? vectorSim * 0.35 : vectorSim;
+                double finalScore = Math.min(0.99, Math.max(0.0, adjustedVectorSim * 0.4 + normalizedTextBoost * 0.6));
                 return chunk.withScore(finalScore);
             })
+            .filter(chunk -> chunk.score() >= threshold)
             .sorted(Comparator.comparingDouble(Chunk::score).reversed())
             .limit(topK)
             .toList();

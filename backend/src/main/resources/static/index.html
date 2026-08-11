@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevCompass AI - Developer Knowledge Platform</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <!-- Marked parser for Markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Highlight.js for Code Highlighting -->
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+    <style>
+        :root {
+            --bg-dark: #090d16;
+            --bg-card: rgba(17, 24, 39, 0.7);
+            --bg-card-hover: rgba(31, 41, 55, 0.8);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --border-highlight: rgba(99, 102, 241, 0.4);
+            --text-primary: #F3F4F6;
+            --text-secondary: #9CA3AF;
+            --text-muted: #6B7280;
+            --accent-primary: #6366F1;
+            --accent-glow: rgba(99, 102, 241, 0.25);
+            --accent-gradient: linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #EC4899 100%);
+            --success-color: #10B981;
+            --warning-color: #F59E0B;
+            --radius-lg: 16px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-image:
+                radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 85% 85%, rgba(236, 72, 153, 0.05) 0%, transparent 40%);
+            background-attachment: fixed;
+        }
+
+        /* Header Navigation */
+        header {
+            border-bottom: 1px solid var(--border-color);
+            backdrop-filter: blur(12px);
+            background: rgba(9, 13, 22, 0.8);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            text-decoration: none;
+            color: var(--text-primary);
+        }
+
+        .brand-icon {
+            width: 36px;
+            height: 36px;
+            background: var(--accent-gradient);
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 16px var(--accent-glow);
+        }
+
+        .brand-icon svg {
+            width: 20px;
+            height: 20px;
+            color: white;
+        }
+
+        .brand-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            background: linear-gradient(180deg, #FFFFFF 0%, #D1D5DB 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .brand-badge {
+            font-size: 0.7rem;
+            font-weight: 600;
+            padding: 2px 8px;
+            background: rgba(99, 102, 241, 0.15);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 20px;
+            color: #A5B4FC;
+            text-transform: uppercase;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            padding: 6px 12px;
+            border-radius: 20px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--success-color);
+            box-shadow: 0 0 8px var(--success-color);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 6px 14px;
+            border-radius: var(--radius-sm);
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s ease;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Main Container */
+        main {
+            max-width: 900px;
+            width: 100%;
+            margin: 2rem auto;
+            padding: 0 1.5rem;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        /* Hero Header */
+        .hero {
+            text-align: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .hero h1 {
+            font-size: 2.25rem;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #FFFFFF 0%, #9CA3AF 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        /* Provider Selector Pill Bar */
+        .provider-section {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .section-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .provider-pills {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .provider-pill {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
+            border-radius: 24px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+
+        .provider-pill:hover {
+            border-color: rgba(255, 255, 255, 0.2);
+            color: var(--text-primary);
+        }
+
+        .provider-pill.active {
+            background: rgba(99, 102, 241, 0.12);
+            border-color: var(--accent-primary);
+            color: #A5B4FC;
+            box-shadow: 0 0 12px var(--accent-glow);
+        }
+
+        .provider-pill .badge-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--text-muted);
+        }
+
+        .provider-pill.active .badge-dot {
+            background: #818CF8;
+            box-shadow: 0 0 6px #818CF8;
+        }
+
+        /* Query Input Box */
+        .query-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            transition: border-color 0.2s ease;
+        }
+
+        .query-card:focus-within {
+            border-color: var(--border-highlight);
+            box-shadow: 0 0 24px var(--accent-glow);
+        }
+
+        .query-textarea {
+            width: 100%;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 1.05rem;
+            resize: none;
+            min-height: 70px;
+            line-height: 1.5;
+        }
+
+        .query-textarea::placeholder {
+            color: var(--text-muted);
+        }
+
+        .query-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .toolbar-options {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .option-group {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .option-group input[type="range"] {
+            width: 60px;
+            accent-color: var(--accent-primary);
+        }
+
+        .btn-submit {
+            background: var(--accent-gradient);
+            border: none;
+            color: white;
+            padding: 8px 20px;
+            border-radius: var(--radius-md);
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            box-shadow: 0 4px 12px var(--accent-glow);
+            transition: all 0.2s ease;
+        }
+
+        .btn-submit:hover {
+            opacity: 0.95;
+            transform: translateY(-1px);
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Sample Prompts */
+        .sample-prompts {
+            display: flex;
+            gap: 0.5rem;
+            overflow-x: auto;
+            padding-bottom: 0.25rem;
+            scrollbar-width: none;
+        }
+
+        .sample-prompts::-webkit-scrollbar {
+            display: none;
+        }
+
+        .prompt-chip {
+            white-space: nowrap;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 6px 14px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .prompt-chip:hover {
+            background: rgba(99, 102, 241, 0.1);
+            border-color: rgba(99, 102, 241, 0.3);
+            color: var(--text-primary);
+        }
+
+        /* Response Card */
+        .response-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            display: none;
+            flex-direction: column;
+            gap: 1.25rem;
+            backdrop-filter: blur(16px);
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .response-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 0.75rem;
+        }
+
+        .response-meta {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .tag-pill {
+            font-size: 0.75rem;
+            font-weight: 500;
+            padding: 3px 10px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+
+        .tag-pill.provider {
+            background: rgba(139, 92, 246, 0.15);
+            border-color: rgba(139, 92, 246, 0.3);
+            color: #C4B5FD;
+        }
+
+        .response-body {
+            font-size: 0.98rem;
+            line-height: 1.65;
+            color: var(--text-primary);
+        }
+
+        .response-body p {
+            margin-bottom: 1rem;
+        }
+
+        .response-body ul,
+        .response-body ol {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .response-body code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #F472B6;
+        }
+
+        .response-body pre {
+            margin: 1rem 0;
+            border-radius: var(--radius-md);
+            overflow: hidden;
+        }
+
+        .response-body pre code {
+            background: transparent;
+            padding: 1rem;
+            display: block;
+            color: inherit;
+        }
+
+        /* Citations & Vector RAG Chunks */
+        .citations-section {
+            margin-top: 0.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .citations-title {
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .citations-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .citation-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 0.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .citation-card:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+
+        .citation-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .citation-source {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--accent-primary);
+        }
+
+        .citation-score {
+            font-size: 0.7rem;
+            color: var(--success-color);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .citation-name {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Loading Skeleton */
+        .loading-state {
+            display: none;
+            flex-direction: column;
+            gap: 1rem;
+            padding: 1.5rem 0;
+        }
+
+        .skeleton-line {
+            height: 14px;
+            background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.03) 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+            border-radius: 4px;
+        }
+
+        @keyframes loading {
+            0% {
+                background-position: 200% 0;
+            }
+
+            100% {
+                background-position: -200% 0;
+            }
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 1.5rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border-color);
+            margin-top: auto;
+        }
+
+        footer a {
+            color: var(--text-secondary);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            color: var(--accent-primary);
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Header Navigation -->
+    <header>
+        <div class="header-container">
+            <a href="#" class="brand">
+                <div class="brand-icon">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                    </svg>
+                </div>
+                <span class="brand-title">DevCompass AI</span>
+                <span class="brand-badge">RAG Platform</span>
+            </a>
+
+            <div class="header-actions">
+                <div class="status-pill">
+                    <div class="status-dot" id="connectionDot"></div>
+                    <span id="statusText">Connecting...</span>
+                </div>
+                <button class="btn-secondary" onclick="triggerIngestion()" id="ingestBtn">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                        </path>
+                    </svg>
+                    Sync Knowledge
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main>
+        <!-- Hero Header -->
+        <div class="hero">
+            <h1>Internal Architecture & Knowledge AI</h1>
+            <p>Ask anything about system flows, Notion docs, git repos, or database schemas.</p>
+        </div>
+
+        <!-- Provider Selector -->
+        <div class="provider-section">
+            <div class="section-label">
+                <span>Select AI Provider</span>
+                <span id="activeProviderLabel" style="color: #A5B4FC;">Default: Gemini</span>
+            </div>
+            <div class="provider-pills" id="providerPills">
+                <!-- Dynamically loaded providers -->
+                <div class="provider-pill active" data-provider="Gemini">
+                    <div class="badge-dot"></div>
+                    <span>Gemini (gemini-1.5-flash)</span>
+                </div>
+                <div class="provider-pill" data-provider="OpenAI">
+                    <div class="badge-dot"></div>
+                    <span>OpenAI (gpt-4o)</span>
+                </div>
+                <div class="provider-pill" data-provider="Claude">
+                    <div class="badge-dot"></div>
+                    <span>Claude 3.5</span>
+                </div>
+                <div class="provider-pill" data-provider="Ollama">
+                    <div class="badge-dot"></div>
+                    <span>Ollama (Local)</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Query Input Card -->
+        <div class="query-card">
+            <textarea id="queryInput" class="query-textarea"
+                placeholder="Ask about system architecture, database relationships, or CI/CD pipelines..."
+                rows="3"></textarea>
+
+            <div class="query-toolbar">
+                <div class="toolbar-options">
+                    <div class="option-group">
+                        <label for="topK">Top K:</label>
+                        <input type="range" id="topK" min="1" max="10" value="5"
+                            oninput="document.getElementById('topKVal').innerText = this.value">
+                        <span id="topKVal">5</span>
+                    </div>
+                    <div class="option-group">
+                        <label for="temp">Temp:</label>
+                        <input type="range" id="temp" min="0" max="1" step="0.1" value="0.2"
+                            oninput="document.getElementById('tempVal').innerText = this.value">
+                        <span id="tempVal">0.2</span>
+                    </div>
+                </div>
+
+                <button class="btn-submit" id="submitBtn" onclick="submitQuery()">
+                    <span>Query System</span>
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Sample Prompts -->
+        <div class="sample-prompts">
+            <div class="prompt-chip" onclick="useSample(this)">💡 Explain our system architecture and data flows</div>
+            <div class="prompt-chip" onclick="useSample(this)">🗄️ What database tables are indexed in PostgreSQL?</div>
+            <div class="prompt-chip" onclick="useSample(this)">🔄 How does the Notion knowledge sync pipeline work?
+            </div>
+            <div class="prompt-chip" onclick="useSample(this)">🚀 Where is the CI/CD pipeline configured?</div>
+        </div>
+
+        <!-- Loading Skeleton -->
+        <div class="loading-state" id="loadingState">
+            <div class="skeleton-line" style="width: 40%;"></div>
+            <div class="skeleton-line" style="width: 90%;"></div>
+            <div class="skeleton-line" style="width: 75%;"></div>
+            <div class="skeleton-line" style="width: 60%;"></div>
+        </div>
+
+        <!-- Response Card -->
+        <div class="response-card" id="responseCard">
+            <div class="response-header">
+                <div class="response-meta">
+                    <span class="tag-pill provider" id="resProvider">Gemini</span>
+                    <span class="tag-pill" id="resLatency">0 ms</span>
+                    <span class="tag-pill" id="resTokens">0 tokens</span>
+                </div>
+            </div>
+
+            <div class="response-body" id="responseBody">
+                <!-- Answer markdown rendered here -->
+            </div>
+
+            <div class="citations-section" id="citationsSection">
+                <div class="citations-title">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                        </path>
+                    </svg>
+                    Retrieved Knowledge Sources & Citations
+                </div>
+                <div class="citations-grid" id="citationsGrid">
+                    <!-- Citation Cards -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <p>DevCompass AI Platform &bull; Powered by Spring Boot, pgvector & Multi-Provider LLMs</p>
+    </footer>
+
+    <script>
+        const API_BASE = '/api/v1';
+        let selectedProvider = 'Gemini';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchPipelineStatus();
+            fetchProviders();
+
+            // Keyboard shortcut Ctrl/Cmd + Enter
+            document.getElementById('queryInput').addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    submitQuery();
+                }
+            });
+        });
+
+        // Fetch Live Pipeline & Health Status
+        async function fetchPipelineStatus() {
+            try {
+                const res = await fetch(`${API_BASE}/pipeline/status`);
+                if (res.ok) {
+                    const data = await res.json();
+                    document.getElementById('connectionDot').style.backgroundColor = '#10B981';
+                    document.getElementById('statusText').innerText = `${data.totalChunksIndexed || 0} Chunks Indexed (${data.activeVectorDatabase || 'pgvector'})`;
+                } else {
+                    document.getElementById('connectionDot').style.backgroundColor = '#F59E0B';
+                    document.getElementById('statusText').innerText = 'Backend Running (In-Memory)';
+                }
+            } catch (err) {
+                document.getElementById('connectionDot').style.backgroundColor = '#EF4444';
+                document.getElementById('statusText').innerText = 'Backend Offline';
+            }
+        }
+
+        // Fetch AI Providers
+        async function fetchProviders() {
+            try {
+                const res = await fetch(`${API_BASE}/providers`);
+                if (res.ok) {
+                    const providers = await res.json();
+                    renderProviders(providers);
+                }
+            } catch (err) {
+                console.warn('Could not fetch dynamic providers, using default pills.');
+            }
+        }
+
+        function renderProviders(providers) {
+            const container = document.getElementById('providerPills');
+            if (!providers || !Array.isArray(providers) || providers.length === 0) return;
+
+            container.innerHTML = '';
+
+            providers.forEach(p => {
+                const providerKey = p.id || p.providerType || p.providerName || p.name;
+                const displayName = p.name || p.providerName || p.id;
+                const modelName = p.model || p.modelName || '';
+                const isActive = p.active === true;
+
+                const pill = document.createElement('div');
+                pill.className = `provider-pill ${isActive ? 'active' : ''}`;
+                pill.setAttribute('data-provider', providerKey);
+                pill.onclick = () => selectProvider(providerKey, displayName);
+
+                pill.innerHTML = `
+                    <div class="badge-dot"></div>
+                    <span>${displayName}${modelName ? ' (' + modelName + ')' : ''}</span>
+                `;
+
+                container.appendChild(pill);
+                if (isActive) {
+                    selectedProvider = providerKey;
+                    document.getElementById('activeProviderLabel').innerText = `Active: ${displayName}`;
+                }
+            });
+        }
+
+        async function selectProvider(providerKey, displayName) {
+            selectedProvider = providerKey;
+            document.querySelectorAll('.provider-pill').forEach(el => {
+                if (el.getAttribute('data-provider') === providerKey) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+            document.getElementById('activeProviderLabel').innerText = `Active: ${displayName || providerKey}`;
+
+            // Notify backend of active provider change
+            try {
+                await fetch(`${API_BASE}/providers/active`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider: providerKey })
+                });
+            } catch (e) {
+                console.log('Provider switched locally');
+            }
+        }
+
+        function useSample(element) {
+            const text = element.innerText.replace(/^[^\s]+\s*/, '');
+            document.getElementById('queryInput').value = text;
+            submitQuery();
+        }
+
+        async function triggerIngestion() {
+            const btn = document.getElementById('ingestBtn');
+            btn.disabled = true;
+            btn.innerHTML = `<svg class="animate-spin" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Syncing...`;
+
+            try {
+                const res = await fetch(`${API_BASE}/pipeline/ingest`, { method: 'POST' });
+                if (res.ok) {
+                    const results = await res.json();
+                    alert(`Sync Complete! Ingested ${results.length} sources.`);
+                    fetchPipelineStatus();
+                } else {
+                    alert('Ingestion trigger received.');
+                }
+            } catch (e) {
+                alert('Sync trigger requested.');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Sync Knowledge`;
+            }
+        }
+
+        async function submitQuery() {
+            const question = document.getElementById('queryInput').value.trim();
+            if (!question) return;
+
+            const submitBtn = document.getElementById('submitBtn');
+            const loadingState = document.getElementById('loadingState');
+            const responseCard = document.getElementById('responseCard');
+
+            submitBtn.disabled = true;
+            loadingState.style.display = 'flex';
+            responseCard.style.display = 'none';
+
+            const payload = {
+                question: question,
+                provider: selectedProvider,
+                topK: parseInt(document.getElementById('topK').value),
+                temperature: parseFloat(document.getElementById('temp').value)
+            };
+
+            try {
+                const res = await fetch(`${API_BASE}/query`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!res.ok) {
+                    throw new Error(`Server returned error ${res.status}`);
+                }
+
+                const data = await res.json();
+                renderResponse(data);
+
+            } catch (err) {
+                renderError(err.message);
+            } finally {
+                submitBtn.disabled = false;
+                loadingState.style.display = 'none';
+            }
+        }
+
+        function renderResponse(data) {
+            const responseCard = document.getElementById('responseCard');
+            const responseBody = document.getElementById('responseBody');
+            const citationsGrid = document.getElementById('citationsGrid');
+
+            document.getElementById('resProvider').innerText = data.providerUsed || selectedProvider;
+            document.getElementById('resLatency').innerText = `${data.latencyMs || 0} ms`;
+            document.getElementById('resTokens').innerText = `${(data.promptTokens || 0) + (data.completionTokens || 0)} tokens`;
+
+            // Render Markdown
+            responseBody.innerHTML = marked.parse(data.answer || 'No answer returned.');
+
+            // Highlight syntax in code blocks
+            document.querySelectorAll('.response-body pre code').forEach((block) => {
+                hljs.highlightElement(block);
+            });
+
+            // Render Citations
+            citationsGrid.innerHTML = '';
+            if (data.citations && data.citations.length > 0) {
+                document.getElementById('citationsSection').style.display = 'block';
+                data.citations.forEach(c => {
+                    const card = document.createElement('div');
+                    card.className = 'citation-card';
+                    card.innerHTML = `
+                        <div class="citation-header">
+                            <span class="citation-source">${c.sourceType || 'DOCUMENT'}</span>
+                            <span class="citation-score">${(c.relevanceScore * 100).toFixed(1)}% Match</span>
+                        </div>
+                        <div class="citation-name" title="${c.sourceTitle}">${c.sourceTitle}</div>
+                    `;
+                    citationsGrid.appendChild(card);
+                });
+            } else {
+                document.getElementById('citationsSection').style.display = 'none';
+            }
+
+            responseCard.style.display = 'flex';
+        }
+
+        function renderError(message) {
+            const responseCard = document.getElementById('responseCard');
+            const responseBody = document.getElementById('responseBody');
+
+            document.getElementById('resProvider').innerText = selectedProvider;
+            document.getElementById('resLatency').innerText = 'Error';
+            document.getElementById('resTokens').innerText = '0 tokens';
+
+            responseBody.innerHTML = `<p style="color: #EF4444; font-weight: 500;">Failed to execute query: ${message}</p>`;
+            document.getElementById('citationsSection').style.display = 'none';
+            responseCard.style.display = 'flex';
+        }
+    </script>
+</body>
+
+</html>

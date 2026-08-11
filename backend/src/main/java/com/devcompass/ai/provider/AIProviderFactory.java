@@ -46,7 +46,7 @@ public class AIProviderFactory {
         return providers.values().stream()
             .map(p -> new ProviderConfig(
                 p.providerName(),
-                p.providerName().toUpperCase() + " Provider",
+                p.providerName().toUpperCase(),
                 p.modelName(),
                 p.providerName(),
                 p.providerName().equalsIgnoreCase(activeProviderName),
