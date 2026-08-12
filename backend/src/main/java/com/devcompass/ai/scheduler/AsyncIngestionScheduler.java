@@ -94,8 +94,8 @@ public class AsyncIngestionScheduler {
     }
 
     // Runs asynchronously every 5 minutes in background for full incremental sync
-    @Scheduled(fixedRate = 300000)
-    @Async
+    // @Scheduled(fixedRate = 300000)
+    // @Async
     public void runIncrementalNotionBackgroundSync() {
         log.info("[AsyncScheduler] Starting background incremental knowledge sync check...");
 

@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -26,53 +27,9 @@ public class NotionKnowledgeSource implements KnowledgeSource {
 
     private static final Logger log = LoggerFactory.getLogger(NotionKnowledgeSource.class);
 
-    private final String apiKey;
-    private final String mainPageId;
+    private String apiKey;
+    private String mainPageId;
     private final RestTemplate restTemplate;
-
-    private final List<Document> fallbackDocuments = List.of(
-        new Document(
-            UUID.randomUUID().toString(),
-            "SEO Application Flow & Architecture Specs",
-            "notion-doc-101",
-            SourceType.NOTION,
-            """
-            # SEO Application Architecture & Flow
-            
-            The SEO Application governs canonical URL generation, open graph social cards, dynamic sitemaps, and search engine microdata across all tutor profile pages.
-            
-            ## Key Subsystems:
-            1. **Tutor SEO Gateway**: Listens to `/api/v1/tutors/seo/*` requests.
-            2. **Metadata Generator Engine**: Computes page titles, meta descriptions, and JSON-LD schema snippets.
-            3. **Redis Pre-Render Cache**: Caches compiled HTML pages for 15 minutes to reduce database load.
-            4. **Database Storage**: Managed via PostgreSQL `tutor_seo_metadata` table.
-            
-            ## Service Ownership:
-            Growth Engineering Team (`#team-growth-eng`) owns all SEO rendering services.
-            """,
-            Map.of("workspace", "Engineering-Wiki", "author", "Sai Teja", "lastEdited", "2026-07-28")
-        ),
-        new Document(
-            UUID.randomUUID().toString(),
-            "OAuth 2.0 & Platform Security Architecture",
-            "notion-doc-102",
-            SourceType.NOTION,
-            """
-            # OAuth 2.0 & Authentication Flow
-            
-            OAuth authentication is handled centralized inside the `platform-auth-service`.
-            
-            ## Token Specs:
-            - JWT access tokens signed with RS256 algorithm (15-minute expiration).
-            - Refresh tokens persisted in Redis cluster (`auth:refresh:{user_id}`).
-            - Role RBAC claims embedded in JWT header payload.
-            
-            ## Ownership:
-            Security Engineering Team (`#team-platform-sec`).
-            """,
-            Map.of("workspace", "Platform-Docs", "author", "Security Team", "lastEdited", "2026-08-01")
-        )
-    );
 
     public NotionKnowledgeSource() {
         this("demo-key", "");
@@ -88,6 +45,29 @@ public class NotionKnowledgeSource implements KnowledgeSource {
         this.restTemplate = new RestTemplate();
     }
 
+    /**
+     * Update Notion credentials at runtime for per-account sync.
+     */
+    public void updateConfig(String apiToken, String pageOrDatabaseId) {
+        if (apiToken != null && !apiToken.isBlank()) {
+            this.apiKey = apiToken;
+        }
+        if (pageOrDatabaseId != null && !pageOrDatabaseId.isBlank()) {
+            this.mainPageId = pageOrDatabaseId;
+        }
+    }
+
+    public Optional<String> validateConfig() {
+        if (apiKey == null || apiKey.isBlank() || apiKey.equalsIgnoreCase("demo-key")) {
+            return Optional.of("Notion API Key is missing or unconfigured.");
+        }
+        if (mainPageId == null || mainPageId.isBlank() || mainPageId.equalsIgnoreCase("demo-key")) {
+            return Optional.of("Notion Main Page ID is unconfigured.");
+        }
+        return Optional.empty();
+    }
+
+
     @Override
     public List<Document> sync() {
         if (apiKey != null && !apiKey.isBlank() && !apiKey.equalsIgnoreCase("demo-key")) {
@@ -102,8 +82,8 @@ public class NotionKnowledgeSource implements KnowledgeSource {
             }
         }
 
-        log.warn("Notion API key not configured or live fetch returned empty. Using fallback documents.");
-        return fallbackDocuments;
+        log.warn("Notion API key not configured or live fetch returned empty. Returning empty documents list.");
+        return new ArrayList<>();
     }
 
     public Document fetchSinglePageDocument(String rawPageId) {

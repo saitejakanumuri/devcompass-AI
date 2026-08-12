@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, FileText, Database, GitBranch } from 'lucide-react';
+import { BookOpen, FileText, Database, GitBranch, MessageSquare, CheckSquare } from 'lucide-react';
 import type { Citation } from '../types/api';
 
 interface CitationsGridProps {
@@ -10,18 +10,19 @@ export const CitationsGrid: React.FC<CitationsGridProps> = ({ citations }) => {
   if (!citations || citations.length === 0) return null;
 
   const renderIcon = (sourceType: string) => {
-    switch (sourceType.toUpperCase()) {
-      case 'NOTION':
-        return <FileText size={14} className="icon-notion" />;
-      case 'DATABASE':
-      case 'SQL':
-        return <Database size={14} className="icon-db" />;
-      case 'GIT':
-      case 'REPOSITORY':
-        return <GitBranch size={14} className="icon-git" />;
-      default:
-        return <BookOpen size={14} />;
+    const typeStr = String(sourceType).toUpperCase();
+    if (typeStr.includes('NOTION')) {
+      return <FileText size={14} className="icon-notion" />;
+    } else if (typeStr.includes('DATABASE') || typeStr.includes('SQL')) {
+      return <Database size={14} className="icon-db" />;
+    } else if (typeStr.includes('GIT') || typeStr.includes('REPOSITORY')) {
+      return <GitBranch size={14} className="icon-git" />;
+    } else if (typeStr.includes('SLACK')) {
+      return <MessageSquare size={14} className="text-pink-500" />;
+    } else if (typeStr.includes('JIRA') || typeStr.includes('CONFLUENCE')) {
+      return <CheckSquare size={14} className="text-blue-500" />;
     }
+    return <BookOpen size={14} />;
   };
 
   return (
@@ -37,25 +38,36 @@ export const CitationsGrid: React.FC<CitationsGridProps> = ({ citations }) => {
       </div>
 
       <div className="citations-grid">
-        {citations.map((c) => (
-          <div key={c.id} className="citation-card">
-            <div className="citation-header">
-              <span className="citation-source">
-                {renderIcon(c.sourceType)}
-                {c.sourceType}
-              </span>
-              <span className="citation-score">
-                {(c.relevanceScore * 100).toFixed(1)}% Match
-              </span>
-            </div>
+        {citations.map((c) => {
+          const excerptText = c.snippet || c.excerpt || '';
+          const pathText = c.documentPath || c.sourceUrl || '';
 
-            <div className="citation-name" title={c.sourceTitle}>
-              {c.sourceTitle}
-            </div>
+          return (
+            <div key={c.id || Math.random().toString()} className="citation-card">
+              <div className="citation-header">
+                <span className="citation-source">
+                  {renderIcon(c.sourceType)}
+                  {c.sourceType}
+                </span>
+                <span className="citation-score">
+                  {(c.relevanceScore * 100).toFixed(1)}% Match
+                </span>
+              </div>
 
-            <p className="citation-excerpt">{c.excerpt}</p>
-          </div>
-        ))}
+              <div className="citation-name" title={c.sourceTitle}>
+                {c.sourceTitle}
+              </div>
+
+              {pathText && (
+                <div className="text-[0.72rem] font-mono text-slate-400 truncate" title={pathText}>
+                  {pathText}
+                </div>
+              )}
+
+              {excerptText && <p className="citation-excerpt">{excerptText}</p>}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

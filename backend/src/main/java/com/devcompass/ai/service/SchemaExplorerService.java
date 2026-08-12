@@ -1,110 +1,131 @@
 package com.devcompass.ai.service;
 
+import com.devcompass.ai.model.AccountKnowledgeConfig;
 import com.devcompass.ai.model.SchemaMetadata;
+import com.devcompass.ai.model.SourceType;
+import com.devcompass.ai.repository.AccountConfigRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class SchemaExplorerService {
 
+    private static final Logger log = LoggerFactory.getLogger(SchemaExplorerService.class);
+
     @Autowired(required = false)
     private JdbcTemplate jdbcTemplate;
 
-    private final List<SchemaMetadata> fallbackSchemas = List.of(
-        new SchemaMetadata(
-            "public",
-            "tutor_seo_metadata",
-            "Stores canonical URLs, meta tags, and structured Schema.org JSON-LD microdata for tutor profile pages.",
-            List.of(
-                new SchemaMetadata.ColumnMetadata("id", "UUID", false, "Primary key generated via gen_random_uuid()"),
-                new SchemaMetadata.ColumnMetadata("tutor_id", "UUID", false, "Foreign key reference to public.tutor_profiles(id)"),
-                new SchemaMetadata.ColumnMetadata("canonical_slug", "VARCHAR(255)", false, "Unique SEO-optimized URL path slug"),
-                new SchemaMetadata.ColumnMetadata("meta_title", "VARCHAR(150)", false, "HTML head title tag value"),
-                new SchemaMetadata.ColumnMetadata("meta_description", "TEXT", true, "HTML meta description tag value"),
-                new SchemaMetadata.ColumnMetadata("schema_jsonld", "JSONB", false, "Structured JSON-LD schema snippet for Google Search"),
-                new SchemaMetadata.ColumnMetadata("created_at", "TIMESTAMPTZ", false, "Creation timestamp"),
-                new SchemaMetadata.ColumnMetadata("updated_at", "TIMESTAMPTZ", false, "Last update timestamp")
-            ),
-            List.of("id"),
-            List.of(new SchemaMetadata.ForeignKeyMetadata("tutor_id", "tutor_profiles", "id")),
-            true
-        ),
-        new SchemaMetadata(
-            "public",
-            "tutor_profiles",
-            "Main profile entity table containing tutor personal details, hourly rate, rating, and status.",
-            List.of(
-                new SchemaMetadata.ColumnMetadata("id", "UUID", false, "Primary key identifier"),
-                new SchemaMetadata.ColumnMetadata("full_name", "VARCHAR(100)", false, "Full displayed name"),
-                new SchemaMetadata.ColumnMetadata("bio", "TEXT", true, "Tutor introduction and background"),
-                new SchemaMetadata.ColumnMetadata("hourly_rate", "NUMERIC(10,2)", false, "Hourly billing rate in USD"),
-                new SchemaMetadata.ColumnMetadata("rating", "NUMERIC(3,2)", false, "Average student review rating (0.00 to 5.00)"),
-                new SchemaMetadata.ColumnMetadata("active_status", "VARCHAR(20)", false, "Status: ACTIVE, INACTIVE, PENDING_VERIFICATION")
-            ),
-            List.of("id"),
-            List.of(),
-            true
-        ),
-        new SchemaMetadata(
-            "public",
-            "seo_slug_mappings",
-            "Maps dynamic incoming request slugs to backend tutor IDs and locale settings.",
-            List.of(
-                new SchemaMetadata.ColumnMetadata("slug_id", "UUID", false, "Primary key"),
-                new SchemaMetadata.ColumnMetadata("source_path", "VARCHAR(500)", false, "Incoming relative HTTP request path"),
-                new SchemaMetadata.ColumnMetadata("target_tutor_id", "UUID", false, "Target tutor ID"),
-                new SchemaMetadata.ColumnMetadata("redirect_code", "INT", false, "HTTP status code (200, 301, 302)")
-            ),
-            List.of("slug_id"),
-            List.of(new SchemaMetadata.ForeignKeyMetadata("target_tutor_id", "tutor_profiles", "id")),
-            true
-        )
+    @Autowired
+    private AccountConfigRepository accountConfigRepository;
+
+    private static final Set<String> IGNORED_SYSTEM_SCHEMAS = Set.of("pg_catalog", "information_schema", "pgvector");
+    private static final Set<String> INTERNAL_APP_TABLES = Set.of(
+        "vector_chunks", "accounts", "users", "account_knowledge_configs", "user_knowledge_configs",
+        "knowledge_sync_tracker", "notion_webhook_queue"
     );
 
+    public boolean testConnection(String rawUrl, String rawUsername, String rawPassword) {
+        NormalizedDbConfig norm = normalizeDbConfig(rawUrl, rawUsername, rawPassword);
+        if (norm.url().isBlank()) return false;
+        try {
+            DriverManagerDataSource ds = new DriverManagerDataSource(norm.url(), norm.username(), norm.password());
+            ds.setDriverClassName("org.postgresql.Driver");
+            JdbcTemplate testJdbc = new JdbcTemplate(ds);
+            Integer val = testJdbc.queryForObject("SELECT 1", Integer.class);
+            return val != null && val == 1;
+        } catch (Exception e) {
+            log.error("[SchemaExplorerService] Failed to test database connection for URL '{}': {}", norm.url(), e.getMessage());
+            return false;
+        }
+    }
+
     public List<SchemaMetadata> getAllSchemas() {
-        if (jdbcTemplate != null) {
-            try {
-                List<SchemaMetadata> liveSchemas = fetchLiveSchemasFromRds();
-                if (liveSchemas != null && !liveSchemas.isEmpty()) {
-                    return liveSchemas;
+        return getSchemasForAccount(null, null);
+    }
+
+    public List<SchemaMetadata> getSchemasForAccount(UUID accountId, UUID userId) {
+        // Try account target database connection if configured
+        if (accountId != null && accountConfigRepository != null) {
+            Optional<AccountKnowledgeConfig> dbConfigOpt = accountConfigRepository.getConfigForAccountUserAndType(accountId, userId, SourceType.DATABASE_METADATA);
+            if (dbConfigOpt.isPresent()) {
+                Map<String, Object> cfgMap = dbConfigOpt.get().configJson();
+                String rawUrl = cfgMap.getOrDefault("url", cfgMap.getOrDefault("dbUrl", "")).toString();
+                String rawUsername = cfgMap.getOrDefault("username", cfgMap.getOrDefault("dbUsername", "")).toString();
+                String rawPassword = cfgMap.getOrDefault("password", cfgMap.getOrDefault("dbPassword", "")).toString();
+
+                NormalizedDbConfig norm = normalizeDbConfig(rawUrl, rawUsername, rawPassword);
+
+                if (!norm.url().isBlank() && testConnection(norm.url(), norm.username(), norm.password())) {
+                    try {
+                        DriverManagerDataSource ds = new DriverManagerDataSource(norm.url(), norm.username(), norm.password());
+                        ds.setDriverClassName("org.postgresql.Driver");
+                        JdbcTemplate targetJdbc = new JdbcTemplate(ds);
+                        List<SchemaMetadata> accountSchemas = fetchLiveSchemasFromJdbc(targetJdbc, false);
+                        if (!accountSchemas.isEmpty()) {
+                            log.info("[SchemaExplorerService] Successfully fetched {} tables from configured account target DB", accountSchemas.size());
+                            return accountSchemas;
+                        }
+                    } catch (Exception e) {
+                        log.warn("[SchemaExplorerService] Failed querying account target database schema: {}", e.getMessage());
+                    }
                 }
-            } catch (Exception e) {
-                // Fallback gracefully if RDS is unreachable or during offline unit testing
             }
         }
 
-        return fallbackSchemas;
+        // Fallback to default system JDBC, filtering out pgvector and system schemas
+        if (jdbcTemplate != null) {
+            try {
+                List<SchemaMetadata> schemas = fetchLiveSchemasFromJdbc(jdbcTemplate, true);
+                if (!schemas.isEmpty()) {
+                    return schemas;
+                }
+                // If filtering internal tables leaves 0 tables, return all live database tables
+                return fetchLiveSchemasFromJdbc(jdbcTemplate, false);
+            } catch (Exception e) {
+                log.warn("[SchemaExplorerService] Failed to query default database schema: {}", e.getMessage());
+            }
+        }
+
+        return new ArrayList<>();
     }
 
-    public Optional<SchemaMetadata> getSchemaForTable(String tableName) {
-        return getAllSchemas().stream()
+    public Optional<SchemaMetadata> getSchemaForTable(String tableName, UUID accountId, UUID userId) {
+        return getSchemasForAccount(accountId, userId).stream()
             .filter(s -> s.tableName().equalsIgnoreCase(tableName))
             .findFirst();
     }
 
-    private List<SchemaMetadata> fetchLiveSchemasFromRds() {
+    private List<SchemaMetadata> fetchLiveSchemasFromJdbc(JdbcTemplate targetJdbc, boolean filterInternalAppTables) {
         String tablesSql = """
             SELECT table_schema, table_name
             FROM information_schema.tables
-            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+            WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'pgvector')
               AND table_type = 'BASE TABLE'
             ORDER BY table_name;
             """;
 
         List<SchemaMetadata> result = new ArrayList<>();
 
-        List<TableRef> tableRefs = jdbcTemplate.query(
+        List<TableRef> tableRefs = targetJdbc.query(
             tablesSql,
             (rs, rowNum) -> new TableRef(rs.getString("table_schema"), rs.getString("table_name"))
         );
 
         for (TableRef ref : tableRefs) {
-            SchemaMetadata meta = buildSchemaForTable(ref.schema, ref.name);
+            if (IGNORED_SYSTEM_SCHEMAS.contains(ref.schema.toLowerCase())) {
+                continue;
+            }
+            if (filterInternalAppTables && INTERNAL_APP_TABLES.contains(ref.name.toLowerCase())) {
+                continue;
+            }
+
+            SchemaMetadata meta = buildSchemaForTable(targetJdbc, ref.schema, ref.name);
             if (meta != null) {
                 result.add(meta);
             }
@@ -113,7 +134,7 @@ public class SchemaExplorerService {
         return result;
     }
 
-    private SchemaMetadata buildSchemaForTable(String schema, String tableName) {
+    private SchemaMetadata buildSchemaForTable(JdbcTemplate targetJdbc, String schema, String tableName) {
         String columnsSql = """
             SELECT column_name, data_type, is_nullable
             FROM information_schema.columns
@@ -121,7 +142,7 @@ public class SchemaExplorerService {
             ORDER BY ordinal_position;
             """;
 
-        List<SchemaMetadata.ColumnMetadata> columns = jdbcTemplate.query(
+        List<SchemaMetadata.ColumnMetadata> columns = targetJdbc.query(
             columnsSql,
             (rs, rowNum) -> new SchemaMetadata.ColumnMetadata(
                 rs.getString("column_name"),
@@ -141,7 +162,7 @@ public class SchemaExplorerService {
               AND tc.table_schema = ? AND tc.table_name = ?;
             """;
 
-        List<String> primaryKeys = jdbcTemplate.query(
+        List<String> primaryKeys = targetJdbc.query(
             pkSql,
             (rs, rowNum) -> rs.getString("column_name"),
             schema, tableName
@@ -160,7 +181,7 @@ public class SchemaExplorerService {
             WHERE kcu1.table_schema = ? AND kcu1.table_name = ?;
             """;
 
-        List<SchemaMetadata.ForeignKeyMetadata> foreignKeys = jdbcTemplate.query(
+        List<SchemaMetadata.ForeignKeyMetadata> foreignKeys = targetJdbc.query(
             fkSql,
             (rs, rowNum) -> new SchemaMetadata.ForeignKeyMetadata(
                 rs.getString("column_name"),
@@ -171,10 +192,9 @@ public class SchemaExplorerService {
         );
 
         boolean hasVector = columns.stream()
-            .anyMatch(c -> c.dataType().toLowerCase().contains("vector")) 
-            || tableName.equalsIgnoreCase("vector_chunks");
+            .anyMatch(c -> c.dataType().toLowerCase().contains("vector"));
 
-        String description = "Live Amazon RDS PostgreSQL table metadata for " + schema + "." + tableName;
+        String description = "Relational PostgreSQL database metadata for " + schema + "." + tableName;
 
         return new SchemaMetadata(
             schema,
@@ -187,5 +207,37 @@ public class SchemaExplorerService {
         );
     }
 
+    private NormalizedDbConfig normalizeDbConfig(String rawUrl, String rawUser, String rawPass) {
+        String url = rawUrl != null ? rawUrl.trim() : "";
+        String user = rawUser != null ? rawUser.trim() : "";
+        String pass = rawPass != null ? rawPass.trim() : "";
+
+        if (url.startsWith("postgresql://")) {
+            url = "jdbc:" + url;
+        }
+
+        if (url.startsWith("jdbc:postgresql://") && url.contains("@")) {
+            try {
+                String userInfoAndHost = url.substring("jdbc:postgresql://".length());
+                int atIndex = userInfoAndHost.indexOf("@");
+                if (atIndex > 0) {
+                    String userInfo = userInfoAndHost.substring(0, atIndex);
+                    String hostAndDb = userInfoAndHost.substring(atIndex + 1);
+                    url = "jdbc:postgresql://" + hostAndDb;
+                    if (userInfo.contains(":")) {
+                        String[] parts = userInfo.split(":", 2);
+                        if (user.isBlank()) user = parts[0];
+                        if (pass.isBlank()) pass = parts[1];
+                    } else if (user.isBlank()) {
+                        user = userInfo;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        return new NormalizedDbConfig(url, user, pass);
+    }
+
     private record TableRef(String schema, String name) {}
+    private record NormalizedDbConfig(String url, String username, String password) {}
 }

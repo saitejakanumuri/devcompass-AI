@@ -28,23 +28,37 @@ public class NotionWebhookController {
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> handleNotionWebhook(@RequestBody Map<String, Object> payload) {
-        log.info("Received Notion webhook payload: {}", payload);
+        log.info("[NotionWebhookController] Received Notion webhook payload: {}", payload);
 
-        // Handle URL verification handshake if required by Notion/Webhook provider
+        // 1. Handle URL verification handshake required by Notion & Webhook integrations
+        if (payload.containsKey("verification_code")) {
+            Object code = payload.get("verification_code");
+            log.info("[NotionWebhookController] Handshake Verification: returning verification_code: {}", code);
+            return ResponseEntity.ok(Map.of("verification_code", code));
+        }
         if (payload.containsKey("challenge")) {
-            return ResponseEntity.ok(Map.of("challenge", payload.get("challenge")));
+            Object challenge = payload.get("challenge");
+            log.info("[NotionWebhookController] Handshake Verification: returning challenge: {}", challenge);
+            return ResponseEntity.ok(Map.of("challenge", challenge));
         }
         if (payload.containsKey("verification_token")) {
-            return ResponseEntity.ok(Map.of("verification_token", payload.get("verification_token")));
+            Object token = payload.get("verification_token");
+            log.info("[NotionWebhookController] Handshake Verification: returning verification_token: {}", token);
+            return ResponseEntity.ok(Map.of("verification_token", token));
+        }
+        if ("url_verification".equalsIgnoreCase(String.valueOf(payload.get("type")))) {
+            log.info("[NotionWebhookController] Handshake Verification: handling type 'url_verification'");
+            return ResponseEntity.ok(payload);
         }
 
+        // 2. Event processing for Page Updates & Insertions
         String pageId = extractPageId(payload);
         String eventType = payload.containsKey("type") ? payload.get("type").toString() : "page_updated";
 
         if (pageId != null && !pageId.isBlank()) {
             String taskId = "task-" + UUID.randomUUID().toString();
             queueRepository.enqueueTask(taskId, pageId, eventType);
-            log.info("Enqueued Notion webhook page sync task {} for page_id: {}", taskId, pageId);
+            log.info("[NotionWebhookController] Enqueued Notion webhook page sync task {} for page_id: {}", taskId, pageId);
 
             return ResponseEntity.ok(Map.of(
                 "status", "QUEUED",
@@ -54,6 +68,7 @@ public class NotionWebhookController {
             ));
         }
 
+        log.warn("[NotionWebhookController] No valid page_id found in webhook payload: {}", payload);
         return ResponseEntity.badRequest().body(Map.of(
             "status", "IGNORED",
             "message", "No valid page_id found in webhook payload"
@@ -61,7 +76,6 @@ public class NotionWebhookController {
     }
 
     private String extractPageId(Map<String, Object> payload) {
-        // Notion Webhook formats can send page ID under entity.id, data.id, page_id, or id
         if (payload.containsKey("page_id")) {
             return payload.get("page_id").toString();
         }

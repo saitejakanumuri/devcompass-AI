@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class IngestionPipelineService {
@@ -64,6 +65,11 @@ public class IngestionPipelineService {
         List<Chunk> allSourceChunks = new ArrayList<>();
 
         for (Document doc : documents) {
+            String targetDocId = getStableDocumentId(doc);
+            
+            // Clean up stale chunks for this document before saving newly generated embeddings
+            vectorStore.deleteChunksByDocumentId(targetDocId);
+
             List<String> sections = chunkGenerator.splitIntoSections(doc);
             int chunkIndex = 0;
 
@@ -75,8 +81,8 @@ public class IngestionPipelineService {
 
                 int approxTokens = Math.max(1, sectionText.length() / 4);
                 Chunk chunk = new Chunk(
-                    doc.id() + "-chunk-" + (++chunkIndex),
-                    doc.id(),
+                    targetDocId + "-chunk-" + (++chunkIndex),
+                    targetDocId,
                     doc.title(),
                     doc.sourceType(),
                     sectionText,
@@ -109,8 +115,10 @@ public class IngestionPipelineService {
             return 0;
         }
 
+        String targetDocId = getStableDocumentId(doc);
+
         // Clean up stale chunks for this document before saving newly generated embeddings
-        vectorStore.deleteChunksByDocumentId(doc.id());
+        vectorStore.deleteChunksByDocumentId(targetDocId);
 
         List<String> sections = chunkGenerator.splitIntoSections(doc);
         List<Chunk> chunks = new ArrayList<>();
@@ -120,8 +128,8 @@ public class IngestionPipelineService {
             float[] chunkVector = embeddingGenerator.generateEmbedding(sectionText);
             int approxTokens = Math.max(1, sectionText.length() / 4);
             Chunk chunk = new Chunk(
-                doc.id() + "-chunk-" + (++chunkIndex),
-                doc.id(),
+                targetDocId + "-chunk-" + (++chunkIndex),
+                targetDocId,
                 doc.title(),
                 doc.sourceType(),
                 sectionText,
@@ -136,5 +144,66 @@ public class IngestionPipelineService {
         vectorStore.saveChunks(chunks);
         return chunks.size();
     }
-}
 
+    /**
+     * Ingests a pre-fetched list of documents for a specific account and source type.
+     * This avoids the global sync anti-pattern — the caller is responsible for
+     * fetching the account-scoped documents before calling this method.
+     */
+    public IngestionResult ingestDocumentsForAccount(UUID accountId, SourceType sourceType, List<Document> documents) {
+        List<String> logs = new ArrayList<>();
+        logs.add("[" + java.time.Instant.now() + "] Account-scoped sync for sourceType=" + sourceType + " accountId=" + accountId);
+
+        int totalChunks = 0;
+        int totalEmbeddings = 0;
+        List<Chunk> allChunks = new ArrayList<>();
+
+        for (Document doc : documents) {
+            String targetDocId = getStableDocumentId(doc);
+            vectorStore.deleteChunksByDocumentId(targetDocId);
+
+            List<String> sections = chunkGenerator.splitIntoSections(doc);
+            int chunkIndex = 0;
+            for (String sectionText : sections) {
+                float[] chunkVector = embeddingGenerator.generateEmbedding(sectionText);
+                totalEmbeddings++;
+                totalChunks++;
+
+                int approxTokens = Math.max(1, sectionText.length() / 4);
+                Chunk chunk = new Chunk(
+                    targetDocId + "-chunk-" + (++chunkIndex),
+                    targetDocId,
+                    doc.title(),
+                    doc.sourceType(),
+                    sectionText,
+                    chunkVector,
+                    approxTokens,
+                    doc.metadata(),
+                    0.0
+                );
+                allChunks.add(chunk);
+            }
+        }
+
+        vectorStore.saveChunks(allChunks);
+        logs.add("Indexed " + totalChunks + " chunks for account " + accountId);
+        logs.add("Status: SUCCESS");
+
+        return new IngestionResult(
+            sourceType,
+            documents.size(),
+            totalChunks,
+            totalEmbeddings,
+            "SUCCESS",
+            logs,
+            java.time.Instant.now()
+        );
+    }
+
+    private String getStableDocumentId(Document doc) {
+        if (doc.sourceId() != null && !doc.sourceId().isBlank()) {
+            return doc.sourceId();
+        }
+        return doc.id();
+    }
+}

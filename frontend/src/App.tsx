@@ -1,12 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { api } from './api/client';
-import type { ProviderConfig, PipelineStatus, QueryResponse } from './types/api';
-import { Header } from './components/Header';
-import { ProviderSelector } from './components/ProviderSelector';
+import type { ProviderConfig, PipelineStatus, QueryResponse, AuthResponse } from './types/api';
+import { type TabType } from './components/Header';
+import { Sidebar } from './components/Sidebar';
+import { TopBar } from './components/TopBar';
 import { QueryCard } from './components/QueryCard';
 import { AnswerCard } from './components/AnswerCard';
+import { KnowledgeSourcesTab } from './components/KnowledgeSourcesTab';
+import { SchemaExplorerTab } from './components/SchemaExplorerTab';
+import { ArchitectureTab } from './components/ArchitectureTab';
+import { OnboardingTab } from './components/OnboardingTab';
+import { AuthModal } from './components/AuthModal';
 
 export const App: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<TabType>('query');
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<AuthResponse | null>(null);
+
   const [providers, setProviders] = useState<ProviderConfig[]>([
     {
       id: 'gemini',
@@ -50,15 +60,15 @@ export const App: React.FC = () => {
     },
   ]);
 
-  const [selectedProvider, setSelectedProvider] = useState('Gemini');
+  const [selectedProvider, setSelectedProvider] = useState('Google Gemini');
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
   const [queryResponse, setQueryResponse] = useState<QueryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    const user = api.getStoredUser();
+    if (user) setCurrentUser(user);
     loadInitialData();
   }, []);
 
@@ -66,10 +76,8 @@ export const App: React.FC = () => {
     try {
       const statusData = await api.getPipelineStatus();
       setPipelineStatus(statusData);
-      setIsConnected(true);
     } catch (err) {
       console.warn('Backend connection pending or offline.');
-      setIsConnected(false);
     }
 
     try {
@@ -91,7 +99,7 @@ export const App: React.FC = () => {
     setProviders((prev) =>
       prev.map((p) => ({
         ...p,
-        active: (p.id || p.providerType || p.name).toLowerCase() === providerKey.toLowerCase(),
+        active: (p.name || p.id || p.providerType).toLowerCase() === providerKey.toLowerCase(),
       }))
     );
 
@@ -129,64 +137,79 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleSync = async () => {
-    setIsSyncing(true);
-    try {
-      const results = await api.runFullIngestion();
-      alert(`Knowledge sync completed! Processed ${results.length} sources.`);
-      await loadInitialData();
-    } catch (err: any) {
-      alert('Knowledge sync request triggered.');
-    } finally {
-      setIsSyncing(false);
-    }
+  const handleLogout = () => {
+    api.logout();
+    setCurrentUser(null);
   };
 
   return (
     <div className="app-layout">
-      <Header
+      {/* Left Navigation Sidebar (ChatGPT / Claude Style) */}
+      <Sidebar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        currentUser={currentUser}
         status={pipelineStatus}
-        isConnected={isConnected}
-        isSyncing={isSyncing}
-        onSync={handleSync}
+        onOpenAuth={() => setAuthModalOpen(true)}
+        onLogout={handleLogout}
+        onNewChat={() => {
+          setQueryResponse(null);
+          setErrorMessage(null);
+        }}
       />
 
-      <main className="main-content">
-        <div className="hero">
-          <h1>Internal Architecture & Knowledge AI</h1>
-          <p>
-            Query system flows, Notion docs, git repos, or database schemas via AI-powered RAG.
-          </p>
-        </div>
-
-        <ProviderSelector
+      {/* Main Content Area with Sticky Header */}
+      <div className="app-main-wrapper">
+        <TopBar
+          activeTab={activeTab}
+          currentUser={currentUser}
           providers={providers}
           selectedProvider={selectedProvider}
           onSelectProvider={handleSelectProvider}
+          onOpenAuth={() => setAuthModalOpen(true)}
+          onLogout={handleLogout}
         />
 
-        <QueryCard
-          onExecuteQuery={handleExecuteQuery}
-          isLoading={isLoading}
-        />
+        <main className="main-content-area">
+          {activeTab === 'query' && (
+            <div className="space-y-6 max-w-4xl mx-auto">
+              <div className="hero text-center py-2">
+                <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Internal Architecture & Knowledge AI</h1>
+                <p className="text-sm text-slate-600 mt-1">
+                  Query system flows, Notion docs, git repos, or database schemas via AI-powered RAG.
+                </p>
+              </div>
 
-        {errorMessage && (
-          <div className="error-banner">
-            ⚠️ {errorMessage}
-          </div>
-        )}
+              <QueryCard
+                onExecuteQuery={handleExecuteQuery}
+                isLoading={isLoading}
+              />
 
-        <AnswerCard
-          response={queryResponse}
-          isLoading={isLoading}
-        />
-      </main>
+              {errorMessage && (
+                <div className="error-banner p-4 bg-red-50 border border-red-200 text-red-800 rounded-xl text-sm font-medium">
+                  ⚠️ {errorMessage}
+                </div>
+              )}
 
-      <footer className="footer">
-        <p>
-          DevCompass AI Platform &bull; React + TypeScript Frontend &bull; Spring Boot + pgvector
-        </p>
-      </footer>
+              <AnswerCard
+                response={queryResponse}
+                isLoading={isLoading}
+              />
+            </div>
+          )}
+
+          {activeTab === 'sources' && <KnowledgeSourcesTab />}
+          {activeTab === 'schema' && <SchemaExplorerTab />}
+          {activeTab === 'architecture' && <ArchitectureTab />}
+          {activeTab === 'onboarding' && <OnboardingTab />}
+        </main>
+      </div>
+
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onSuccess={(user) => setCurrentUser(user)}
+      />
     </div>
   );
 };
