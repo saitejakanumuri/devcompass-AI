@@ -35,20 +35,4 @@ public class EmbeddingProviderFactory {
         return Optional.ofNullable(providers.get(name.toLowerCase()))
             .orElseGet(this::getActiveProvider);
     }
-
-    public void setActiveProvider(String name) {
-        if (name != null && providers.containsKey(name.toLowerCase())) {
-            this.activeProviderName = name.toLowerCase();
-        }
-    }
-
-    public List<Map<String, Object>> listProviders() {
-        return providers.values().stream()
-            .map(p -> Map.<String, Object>of(
-                "name", p.providerName(),
-                "dimension", p.dimension(),
-                "active", p.providerName().equalsIgnoreCase(activeProviderName)
-            ))
-            .toList();
-    }
 }
