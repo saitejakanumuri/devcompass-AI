@@ -1,6 +1,5 @@
 package com.devcompass.ai.provider;
 
-import com.devcompass.ai.model.ProviderConfig;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -9,6 +8,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Factory that manages available LLM providers (Gemini, OpenAI, Claude, Ollama).
+ * Uses config-driven default provider — no UI switching needed.
+ */
 @Component
 public class AIProviderFactory {
 
@@ -32,28 +35,6 @@ public class AIProviderFactory {
             return getActiveProvider();
         }
         return Optional.ofNullable(providers.get(name.toLowerCase()))
-            .orElseThrow(() -> new IllegalArgumentException("Unknown AI Provider: " + name + ". Available: " + providers.keySet()));
-    }
-
-    public void setActiveProvider(String providerName) {
-        if (!providers.containsKey(providerName.toLowerCase())) {
-            throw new IllegalArgumentException("Cannot activate unknown provider: " + providerName);
-        }
-        this.activeProviderName = providerName.toLowerCase();
-    }
-
-    public List<ProviderConfig> listProviders() {
-        return providers.values().stream()
-            .map(p -> new ProviderConfig(
-                p.providerName(),
-                p.providerName().toUpperCase(),
-                p.modelName(),
-                p.providerName(),
-                p.providerName().equalsIgnoreCase(activeProviderName),
-                "Provider implementation handling RAG prompt construction and inference.",
-                p.contextWindowSize(),
-                0.2
-            ))
-            .toList();
+            .orElseGet(this::getActiveProvider);
     }
 }

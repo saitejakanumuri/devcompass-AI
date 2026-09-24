@@ -3,7 +3,6 @@ package com.devcompass.ai.repository;
 import com.devcompass.ai.model.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -16,8 +15,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Repository for users.
- * Users are the top-level identity — no parent Account entity exists anymore.
+ * Repository for users. User is the top-level identity entity.
  */
 @Repository
 public class AccountRepository {
@@ -26,7 +24,6 @@ public class AccountRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    @Autowired
     public AccountRepository(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
@@ -35,7 +32,6 @@ public class AccountRepository {
     public void initSchema() {
         if (jdbcTemplate == null) return;
         try {
-            // Users table — no account_id FK (flattened schema)
             jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id UUID PRIMARY KEY,
@@ -48,7 +44,6 @@ public class AccountRepository {
                 );
                 """);
 
-            // Per-user knowledge source configs
             jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS user_knowledge_configs (
                     id UUID PRIMARY KEY,
@@ -62,51 +57,30 @@ public class AccountRepository {
                 );
                 """);
 
-            // Vector chunks store with user-level isolation
-            jdbcTemplate.execute("""
-                CREATE TABLE IF NOT EXISTS vector_chunks (
-                    id VARCHAR(255) PRIMARY KEY,
-                    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-                    document_id VARCHAR(255) NOT NULL,
-                    document_title TEXT NOT NULL,
-                    source_type VARCHAR(50) NOT NULL,
-                    content TEXT NOT NULL,
-                    embedding vector(768),
-                    token_count INT,
-                    metadata JSONB,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                );
-                """);
-
-            log.info("[AccountRepository] User schema initialized successfully.");
+            log.info("[UserRepo] Schema initialized.");
         } catch (Exception e) {
-            log.warn("[AccountRepository] Could not initialize user schema (may already exist): {}", e.getMessage());
+            log.warn("[UserRepo] Schema init skipped (may already exist): {}", e.getMessage());
         }
     }
 
-    /**
-     * Create a new user. No Account is created — user is the top-level identity.
-     * Returns accountId = userId for frontend compatibility.
-     */
     public User createUser(String email, String passwordHash, String fullName, String role) {
         UUID id = UUID.randomUUID();
         Instant now = Instant.now();
 
-        String sql = """
-            INSERT INTO users (id, email, password_hash, full_name, role, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """;
-
-        jdbcTemplate.update(sql, id, email, passwordHash, fullName,
-            role != null ? role : "USER", Timestamp.from(now), Timestamp.from(now));
-        log.info("[AccountRepository] Created user: '{}'", email);
+        jdbcTemplate.update(
+            "INSERT INTO users (id, email, password_hash, full_name, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            id, email, passwordHash, fullName, role != null ? role : "USER", Timestamp.from(now), Timestamp.from(now)
+        );
+        log.info("[UserRepo] Created user: '{}'", email);
         return new User(id, email, passwordHash, fullName, role != null ? role : "USER", now, now);
     }
 
     public Optional<User> findUserByEmail(String email) {
-        String sql = "SELECT id, email, password_hash, full_name, role, created_at, updated_at FROM users WHERE email = ?";
         try {
-            User user = jdbcTemplate.queryForObject(sql, this::mapUser, email.toLowerCase().trim());
+            User user = jdbcTemplate.queryForObject(
+                "SELECT id, email, password_hash, full_name, role, created_at, updated_at FROM users WHERE email = ?",
+                this::mapUser, email.toLowerCase().trim()
+            );
             return Optional.ofNullable(user);
         } catch (Exception e) {
             return Optional.empty();
@@ -114,9 +88,11 @@ public class AccountRepository {
     }
 
     public Optional<User> findUserById(UUID id) {
-        String sql = "SELECT id, email, password_hash, full_name, role, created_at, updated_at FROM users WHERE id = ?";
         try {
-            User user = jdbcTemplate.queryForObject(sql, this::mapUser, id);
+            User user = jdbcTemplate.queryForObject(
+                "SELECT id, email, password_hash, full_name, role, created_at, updated_at FROM users WHERE id = ?",
+                this::mapUser, id
+            );
             return Optional.ofNullable(user);
         } catch (Exception e) {
             return Optional.empty();
