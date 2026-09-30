@@ -4,11 +4,9 @@ import com.devcompass.ai.model.Document;
 import com.devcompass.ai.model.SourceType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.util.FileSystemUtils;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,141 +20,147 @@ public class GitKnowledgeSource implements KnowledgeSource {
 
     private static final Logger log = LoggerFactory.getLogger(GitKnowledgeSource.class);
 
-    private String repoUrl;
-    private String repoPath;
-    private String branch;
-    private String includedExtensions;
-    private long maxFileSizeKb;
+    public Optional<String> validateConfig(Map<String, Object> config) {
+        String repoUrl = str(config, "repoUrl", "");
+        String repoPath = str(config, "repoPath", "");
 
-    public GitKnowledgeSource() {
-        this("", "./", "main", "java,ts,tsx,py,go,rs,yml,yaml,md,json", 500L);
-    }
-
-    @Autowired
-    public GitKnowledgeSource(
-        @Value("${devcompass.sources.git.repo-url:}") String repoUrl,
-        @Value("${devcompass.sources.git.repo-path:./}") String repoPath,
-        @Value("${devcompass.sources.git.branch:main}") String branch,
-        @Value("${devcompass.sources.git.included-extensions:java,ts,tsx,py,go,rs,yml,yaml,md,json}") String includedExtensions,
-        @Value("${devcompass.sources.git.max-file-size-kb:500}") Long maxFileSizeKb
-    ) {
-        this.repoUrl = repoUrl != null ? repoUrl.trim() : "";
-        this.repoPath = repoPath != null ? repoPath.trim() : "./";
-        this.branch = branch != null ? branch.trim() : "main";
-        this.includedExtensions = includedExtensions != null ? includedExtensions.trim() : "java,ts,tsx,py,go,rs,yml,yaml,md,json";
-        this.maxFileSizeKb = maxFileSizeKb != null ? maxFileSizeKb : 500L;
-    }
-
-    public synchronized void updateConfig(String repoUrl, String repoPath, String branch, String includedExtensions, Long maxFileSizeKb) {
-        if (repoUrl != null) this.repoUrl = repoUrl.trim();
-        if (repoPath != null && !repoPath.isBlank()) this.repoPath = repoPath.trim();
-        if (branch != null && !branch.isBlank()) this.branch = branch.trim();
-        if (includedExtensions != null && !includedExtensions.isBlank()) this.includedExtensions = includedExtensions.trim();
-        if (maxFileSizeKb != null && maxFileSizeKb > 0) this.maxFileSizeKb = maxFileSizeKb;
-        log.info("[GitKnowledgeSource] Config updated: repoUrl='{}', repoPath='{}', branch='{}', extensions='{}'", this.repoUrl, this.repoPath, this.branch, this.includedExtensions);
-    }
-
-    public Optional<String> validateConfig() {
-        if (repoPath == null || repoPath.isBlank()) {
-            return Optional.of("Repository file path is empty.");
+        if (repoUrl.isBlank() && repoPath.isBlank()) {
+            return Optional.of("Repository URL or local path must be provided.");
         }
-        try {
-            Path rootPath = Paths.get(repoPath).toAbsolutePath().normalize();
-            if (!Files.exists(rootPath)) {
-                return Optional.of("Configured Git repository path '" + repoPath + "' does not exist on disk.");
+
+        if (!repoUrl.isBlank()) {
+            if (!repoUrl.startsWith("http://") && !repoUrl.startsWith("https://")) {
+                return Optional.of("Repository URL must be a valid HTTP/HTTPS URL.");
             }
-            if (!Files.isDirectory(rootPath)) {
-                return Optional.of("Configured Git repository path '" + repoPath + "' is not a valid directory.");
+        } else {
+            try {
+                Path rootPath = Paths.get(repoPath).toAbsolutePath().normalize();
+                if (!Files.exists(rootPath) || !Files.isDirectory(rootPath)) {
+                    return Optional.of("Configured Git repository path '" + repoPath + "' is not a valid directory.");
+                }
+            } catch (Exception e) {
+                return Optional.of("Invalid Git repository path format: " + e.getMessage());
             }
-        } catch (Exception e) {
-            return Optional.of("Invalid Git repository path format: " + e.getMessage());
         }
         return Optional.empty();
     }
 
-    public Map<String, Object> getConfig() {
-        Optional<String> validationErr = validateConfig();
-        Map<String, Object> config = new HashMap<>();
-        config.put("repoUrl", repoUrl);
-        config.put("repoPath", repoPath);
-        config.put("branch", branch);
-        config.put("includedExtensions", includedExtensions);
-        config.put("maxFileSizeKb", maxFileSizeKb);
-        config.put("healthy", isHealthy());
-        config.put("validationError", validationErr.orElse(null));
-        return config;
-    }
-
     @Override
-    public List<Document> sync() {
-        log.info("[GitKnowledgeSource] Scanning Git repository at path '{}' for source code artifacts...", repoPath);
-        Path rootPath = Paths.get(repoPath).toAbsolutePath().normalize();
+    public List<Document> sync(Map<String, Object> config) {
+        String repoUrl = str(config, "repoUrl", "");
+        String repoPath = str(config, "repoPath", "");
+        String branch = str(config, "branch", "main");
+        String includedExtensions = str(config, "includedExtensions", "java,ts,tsx,py,go,rs,yml,yaml,md,json");
+        long maxFileSizeKb = 500L;
+        try {
+            maxFileSizeKb = Long.parseLong(str(config, "maxFileSizeKb", "500"));
+        } catch (Exception ignored) {}
 
-        if (!Files.exists(rootPath) || !Files.isDirectory(rootPath)) {
-            log.warn("[GitKnowledgeSource] Configured Git path '{}' does not exist or is not a directory. Returning empty documents list.", rootPath);
-            return new ArrayList<>();
-        }
+        Path rootPath = null;
+        boolean isTempDir = false;
 
-        Set<String> allowedExts = Arrays.stream(includedExtensions.toLowerCase().split(","))
-            .map(String::trim)
-            .filter(s -> !s.isEmpty())
-            .collect(Collectors.toSet());
+        try {
+            if (!repoUrl.isBlank()) {
+                log.info("[GitKnowledgeSource] Cloning Git repository '{}' branch '{}'...", repoUrl, branch);
+                rootPath = Files.createTempDirectory("devcompass-git-");
+                isTempDir = true;
 
-        List<Document> documents = new ArrayList<>();
+                ProcessBuilder pb = new ProcessBuilder(
+                    "git", "clone", "--depth", "1", "-b", branch, repoUrl, rootPath.toString()
+                );
+                pb.redirectErrorStream(true);
+                Process process = pb.start();
+                int exitCode = process.waitFor();
 
-        try (Stream<Path> stream = Files.walk(rootPath)) {
-            List<Path> files = stream
-                .filter(Files::isRegularFile)
-                .filter(p -> isAllowedPath(p, rootPath, allowedExts))
-                .toList();
+                if (exitCode != 0) {
+                    String output = new String(process.getInputStream().readAllBytes());
+                    log.error("[GitKnowledgeSource] Git clone failed with exit code {}: {}", exitCode, output);
+                    return new ArrayList<>();
+                }
+                log.info("[GitKnowledgeSource] Clone successful to temporary directory {}", rootPath);
+            } else if (!repoPath.isBlank()) {
+                log.info("[GitKnowledgeSource] Scanning local Git repository at path '{}'...", repoPath);
+                rootPath = Paths.get(repoPath).toAbsolutePath().normalize();
+                if (!Files.exists(rootPath) || !Files.isDirectory(rootPath)) {
+                    log.warn("[GitKnowledgeSource] Configured Git path '{}' does not exist or is not a directory.", rootPath);
+                    return new ArrayList<>();
+                }
+            } else {
+                return new ArrayList<>();
+            }
 
-            for (Path path : files) {
-                try {
-                    long sizeKb = Files.size(path) / 1024;
-                    if (sizeKb > maxFileSizeKb) {
-                        log.debug("Skipping file {} as size ({} KB) exceeds limit of {} KB", path, sizeKb, maxFileSizeKb);
-                        continue;
+            Set<String> allowedExts = Arrays.stream(includedExtensions.toLowerCase().split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toSet());
+
+            List<Document> documents = new ArrayList<>();
+
+            final Path finalRootPath = rootPath;
+            try (Stream<Path> stream = Files.walk(rootPath)) {
+                List<Path> files = stream
+                    .filter(Files::isRegularFile)
+                    .filter(p -> isAllowedPath(p, finalRootPath, allowedExts))
+                    .toList();
+
+                for (Path path : files) {
+                    try {
+                        long sizeKb = Files.size(path) / 1024;
+                        if (sizeKb > maxFileSizeKb) {
+                            log.debug("Skipping file {} as size ({} KB) exceeds limit of {} KB", path, sizeKb, maxFileSizeKb);
+                            continue;
+                        }
+
+                        String content = Files.readString(path);
+                        if (content.isBlank()) continue;
+
+                        Path relativePath = rootPath.relativize(path);
+                        String fileBasename = path.getFileName().toString();
+                        String docId = "git:" + relativePath.toString().replace('\\', '/');
+
+                        Document doc = new Document(
+                            UUID.randomUUID().toString(),
+                            fileBasename + " (" + relativePath.toString().replace('\\', '/') + ")",
+                            docId,
+                            SourceType.GIT_REPOSITORY,
+                            content,
+                            Map.of(
+                                "relativePath", relativePath.toString().replace('\\', '/'),
+                                "fileName", fileBasename,
+                                "repoUrl", repoUrl.isBlank() ? "Local Workspace Repository" : repoUrl,
+                                "branch", branch,
+                                "fileSizeKb", sizeKb,
+                                "source", "Live Git Code File Scanner"
+                            )
+                        );
+                        documents.add(doc);
+                    } catch (Exception e) {
+                        log.debug("Notice reading file {}: {}", path, e.getMessage());
                     }
-
-                    String content = Files.readString(path);
-                    if (content.isBlank()) continue;
-
-                    Path relativePath = rootPath.relativize(path);
-                    String fileBasename = path.getFileName().toString();
-                    String docId = "git-file-" + relativePath.toString().replace('\\', '/');
-
-                    Document doc = new Document(
-                        UUID.randomUUID().toString(),
-                        fileBasename + " (" + relativePath.toString().replace('\\', '/') + ")",
-                        docId,
-                        SourceType.GIT_REPOSITORY,
-                        content,
-                        Map.of(
-                            "relativePath", relativePath.toString().replace('\\', '/'),
-                            "fileName", fileBasename,
-                            "repoUrl", repoUrl.isBlank() ? "Local Workspace Repository" : repoUrl,
-                            "branch", branch,
-                            "fileSizeKb", sizeKb,
-                            "source", "Live Git Code File Scanner"
-                        )
-                    );
-                    documents.add(doc);
-                } catch (Exception e) {
-                    log.debug("Notice reading file {}: {}", path, e.getMessage());
                 }
             }
-        } catch (IOException e) {
-            log.error("[GitKnowledgeSource] Error scanning Git repository at path {}: {}", rootPath, e.getMessage());
-            return new ArrayList<>();
-        }
 
-        if (documents.isEmpty()) {
-            log.warn("[GitKnowledgeSource] No matching code files found at path '{}'. Returning empty documents list.", rootPath);
-            return new ArrayList<>();
-        }
+            if (documents.isEmpty()) {
+                log.warn("[GitKnowledgeSource] No matching code files found at path '{}'. Returning empty documents list.", rootPath);
+                return new ArrayList<>();
+            }
 
-        log.info("[GitKnowledgeSource] Scanned and extracted {} source code documents from Git repository.", documents.size());
-        return documents;
+            log.info("[GitKnowledgeSource] Scanned and extracted {} source code documents from Git repository.", documents.size());
+            return documents;
+
+        } catch (Exception e) {
+            log.error("[GitKnowledgeSource] Error processing Git repository: {}", e.getMessage());
+            return new ArrayList<>();
+        } finally {
+            if (isTempDir && rootPath != null) {
+                try {
+                    FileSystemUtils.deleteRecursively(rootPath);
+                    log.info("[GitKnowledgeSource] Cleaned up temporary directory {}", rootPath);
+                } catch (IOException e) {
+                    log.warn("[GitKnowledgeSource] Failed to delete temporary directory {}: {}", rootPath, e.getMessage());
+                }
+            }
+        }
     }
 
     private boolean isAllowedPath(Path path, Path rootPath, Set<String> allowedExts) {
@@ -187,12 +191,14 @@ public class GitKnowledgeSource implements KnowledgeSource {
     }
 
     @Override
-    public String sourceName() {
+    public String sourceName(Map<String, Object> config) {
+        String repoUrl = str(config, "repoUrl", "");
+        String repoPath = str(config, "repoPath", "./");
         return "Git Repository (" + (repoUrl.isBlank() ? repoPath : repoUrl) + ")";
     }
 
     @Override
-    public boolean isHealthy() {
-        return validateConfig().isEmpty();
+    public boolean isHealthy(Map<String, Object> config) {
+        return validateConfig(config).isEmpty();
     }
 }

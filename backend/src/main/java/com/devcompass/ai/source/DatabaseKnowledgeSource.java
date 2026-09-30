@@ -20,18 +20,14 @@ public class DatabaseKnowledgeSource implements KnowledgeSource {
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseKnowledgeSource.class);
 
-    private String jdbcUrl = "";
-    private String username = "";
-    private String password = "";
 
-    public void updateConfig(String jdbcUrl, String username, String password) {
-        this.jdbcUrl = jdbcUrl;
-        this.username = username;
-        this.password = password;
-    }
 
     @Override
-    public List<Document> sync() {
+    public List<Document> sync(Map<String, Object> config) {
+        String jdbcUrl = str(config, "url", str(config, "jdbcUrl", ""));
+        String username = str(config, "username", "");
+        String password = str(config, "password", "");
+
         if (jdbcUrl.isBlank() || username.isBlank() || password.isBlank()) {
             log.warn("[DatabaseKnowledgeSource] Missing DB credentials. Cannot sync.");
             return List.of();
@@ -76,12 +72,15 @@ public class DatabaseKnowledgeSource implements KnowledgeSource {
     }
 
     @Override
-    public String sourceName() {
+    public String sourceName(Map<String, Object> config) {
         return "Database Schema";
     }
 
     @Override
-    public boolean isHealthy() {
+    public boolean isHealthy(Map<String, Object> config) {
+        String jdbcUrl = str(config, "url", str(config, "jdbcUrl", ""));
+        String username = str(config, "username", "");
+        String password = str(config, "password", "");
         return !jdbcUrl.isBlank() && !username.isBlank() && !password.isBlank();
     }
 }

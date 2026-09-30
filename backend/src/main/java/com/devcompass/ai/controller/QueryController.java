@@ -4,6 +4,10 @@ import com.devcompass.ai.model.QueryRequest;
 import com.devcompass.ai.model.QueryResponse;
 import com.devcompass.ai.service.QueryEngineService;
 import org.springframework.http.ResponseEntity;
+
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import com.devcompass.ai.security.AuthenticatedUser;
+import java.util.*;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -17,11 +21,12 @@ public class QueryController {
     }
 
     @PostMapping
-    public ResponseEntity<QueryResponse> querySystem(@RequestBody QueryRequest request) {
+    public ResponseEntity<QueryResponse> querySystem(@RequestBody QueryRequest request, @AuthenticationPrincipal AuthenticatedUser principal) {
+        UUID userId = principal.userId();
         if (request.question() == null || request.question().isBlank()) {
             return ResponseEntity.badRequest().build();
         }
-        QueryResponse response = queryEngineService.executeQuery(request);
+        QueryResponse response = queryEngineService.executeQuery(request,userId);
         return ResponseEntity.ok(response);
     }
 }

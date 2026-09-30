@@ -1,6 +1,6 @@
-# DevCompass AI
+# Your Local LLM
 
-DevCompass AI is a streamlined, user-account level Retrieval-Augmented Generation (RAG) platform. It allows users to connect their engineering knowledge sources (Git repositories, Notion workspaces, and Database schemas), automatically process them into vector embeddings, and query them using a powerful LLM via a clean, simple chat interface.
+Your Local LLM is a streamlined, user-centric Retrieval-Augmented Generation (RAG) platform that works similarly to NotebookLM. Instead of being an enterprise application with multi-tenant company roles, it allows individual users to directly plug in their own engineering knowledge sources (e.g., local repository paths, database connection strings, and Notion API Keys/Page IDs). It automatically processes these sources into vector embeddings and lets you query them using a powerful LLM via a clean, simple chat interface.
  
 ## 🚀 Features
 
@@ -32,7 +32,7 @@ DevCompass AI is a streamlined, user-account level Retrieval-Augmented Generatio
 ## 📂 Project Structure
 
 ```
-devcompass-ai/
+your-local-llm/
 ├── backend/            # Spring Boot RAG Engine
 │   ├── src/main/java/com/devcompass/ai/
 │   │   ├── config/     # Spring Security & App configs
@@ -100,4 +100,13 @@ devcompass-ai/
 
 ---
 
-**Note:** This project was recently refactored to remove complex multi-tenant enterprise features (like Admin dashboards and company roles) in favor of a clean, beginner-friendly, and highly extensible user-level RAG framework.
+**Note:** This application shows the NotebookLM for Developers  — a highly flexible, user-level framework where you can easily plug in the following available sources:
+- **Local Repository Path**
+- **Database Connection String**
+- **Notion API-KEY and Main-Page-ID**
+
+Bugfixes required:
+1. improve output context length from LLM.
+2. summarize/Augment/Explain the context just not return the matched.
+currently version screenshots:
+https://drive.google.com/file/d/11mD82MdyajMYDZ1fYjkhde0rjzS6gzPk/view?usp=sharing

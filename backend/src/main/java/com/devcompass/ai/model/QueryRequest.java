@@ -4,8 +4,7 @@ public record QueryRequest(
     String question,
     String provider,
     Integer topK,
-    Double temperature,
-    String systemPromptOverride
+    Double temperature
 ) {
     public QueryRequest {
         if (topK == null) topK = 5;

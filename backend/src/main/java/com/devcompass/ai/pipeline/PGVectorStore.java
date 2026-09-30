@@ -2,14 +2,12 @@ package com.devcompass.ai.pipeline;
 
 import com.devcompass.ai.model.Chunk;
 import com.devcompass.ai.model.SourceType;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.util.Arrays;
 import java.util.Comparator;
@@ -23,90 +21,24 @@ public class PGVectorStore implements VectorStore {
 
     private static final Logger log = LoggerFactory.getLogger(PGVectorStore.class);
 
-    private final String tableName;
-    private final int dimension;
     private final EmbeddingGenerator embeddingGenerator;
+    private final JdbcTemplate jdbcTemplate;
+    private final String tableName;
 
-    @Autowired(required = false)
-    private JdbcTemplate jdbcTemplate;
-
-    private boolean dbInitialized = false;
-
-    public PGVectorStore(
-        @Value("${devcompass.vector-store.pgvector.table:vector_chunks}") String tableName,
-        @Value("${devcompass.vector-store.dimension:768}") int dimension,
-        EmbeddingGenerator embeddingGenerator
-    ) {
-        this.tableName = tableName;
-        this.dimension = dimension;
+    public PGVectorStore(EmbeddingGenerator embeddingGenerator, JdbcTemplate jdbcTemplate, @Value("${devcompass.vector-store.pgvector.table:vector_chunks}") String tableName) {
         this.embeddingGenerator = embeddingGenerator;
-    }
-
-    @PostConstruct
-    public void initDatabaseSchema() {
-        if (jdbcTemplate == null) {
-            log.warn("[PGVectorStore] JdbcTemplate is null. PostgreSQL vector store will not initialize.");
-            return;
-        }
-
-        try {
-            // 1. Enable pgvector extension in Amazon RDS / PostgreSQL
-            jdbcTemplate.execute("CREATE EXTENSION IF NOT EXISTS vector;");
-
-            // 2. Create vector_chunks table with vector(dimension) and user_id column
-            String createTableSql = """
-                CREATE TABLE IF NOT EXISTS %s (
-                    id VARCHAR(255) PRIMARY KEY,
-                    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-                    document_id VARCHAR(255) NOT NULL,
-                    document_title TEXT NOT NULL,
-                    source_type VARCHAR(50) NOT NULL,
-                    content TEXT NOT NULL,
-                    embedding vector(%d),
-                    token_count INT DEFAULT 0,
-                    created_at TIMESTAMPTZ DEFAULT NOW()
-                );
-                """.formatted(tableName, dimension);
-
-            jdbcTemplate.execute(createTableSql);
-
-            // Ensure user_id column exists and drop legacy account_id column if present
-            try {
-                jdbcTemplate.execute("ALTER TABLE " + tableName + " ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;");
-                jdbcTemplate.execute("ALTER TABLE " + tableName + " DROP COLUMN IF EXISTS account_id;");
-                jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_" + tableName + "_user_id ON " + tableName + "(user_id);");
-            } catch (Exception ignored) {}
-
-            // 3. Create HNSW / IVFFlat vector index for fast similarity search
-            String createIndexSql = """
-                CREATE INDEX IF NOT EXISTS idx_%s_embedding ON %s USING hnsw (embedding vector_cosine_ops);
-                """.formatted(tableName, tableName);
-
-            try {
-                jdbcTemplate.execute(createIndexSql);
-            } catch (Exception ignored) {
-                // Index might already exist or require HNSW extension level
-            }
-
-            dbInitialized = true;
-            log.info("[PGVectorStore] Successfully initialized PostgreSQL pgvector table: '{}' (Dimension: {})", tableName, dimension);
-        } catch (Exception e) {
-            dbInitialized = false;
-            log.error("[PGVectorStore] Failed to initialize PostgreSQL pgvector extension or table '{}'", tableName, e);
-        }
-    }
-
-    public String getTableName() {
-        return tableName;
+        this.jdbcTemplate = jdbcTemplate;
+        this.tableName = tableName;
     }
 
     @Override
     public String storeName() {
-        return "Amazon RDS PostgreSQL (pgvector)";
+        return "Amazon RDS PostgreSQL (pgvector via JdbcTemplate)";
     }
 
+    @Override
     public boolean isInitialized() {
-        return dbInitialized;
+        return true; // Table schema is managed by Hibernate via ChunkEntity
     }
 
     @Override
@@ -116,12 +48,7 @@ public class PGVectorStore implements VectorStore {
 
     public void saveChunks(List<Chunk> chunks, UUID userId) {
         if (chunks == null || chunks.isEmpty()) return;
-
-        if (!dbInitialized || jdbcTemplate == null) {
-            log.warn("[PGVectorStore] Cannot save {} chunks because PostgreSQL DB is not initialized.", chunks.size());
-            return;
-        }
-
+        if (jdbcTemplate == null) return;
         try {
             String insertSql = """
                 INSERT INTO %s (id, user_id, document_id, document_title, source_type, content, embedding, token_count)
@@ -153,16 +80,21 @@ public class PGVectorStore implements VectorStore {
         }
     }
 
+    private String formatVectorSql(float[] vector) {
+        if (vector == null) return "[]";
+        return Arrays.toString(vector);
+    }
+
     @Override
     public List<Chunk> similaritySearch(String queryText, int topK, double threshold) {
         return similaritySearch(queryText, topK, threshold, null);
     }
 
     public List<Chunk> similaritySearch(String queryText, int topK, double threshold, UUID userId) {
-        if (!dbInitialized || jdbcTemplate == null || queryText == null || queryText.isBlank()) {
-            log.warn("[PGVectorStore] DB search skipped. Initialized: {}, Query: '{}'", dbInitialized, queryText);
+        if (jdbcTemplate == null || queryText == null || queryText.isBlank()) {
             return List.of();
         }
+        log.info("userID:: "+userId);
 
         try {
             float[] queryVector = embeddingGenerator.generateEmbedding(queryText);
@@ -212,9 +144,7 @@ public class PGVectorStore implements VectorStore {
                 .sorted(Comparator.comparingDouble(Chunk::score).reversed())
                 .toList();
 
-            log.info("[PGVectorStore] Similarity Search Query: '{}' | Candidates: {} | Returned Above Threshold (>= {}): {} (User: {})",
-                queryText, retrieved.size(), threshold, filtered.size(), userId != null ? userId : "Global");
-
+            log.info("[PGVectorStore] Search '{}' | Threshold >= {} | Returned: {} (User: {})", queryText, threshold, filtered.size(), userId);
             return filtered;
         } catch (Exception e) {
             log.error("[PGVectorStore] Error during vector similarity search for query '{}'", queryText, e);
@@ -223,41 +153,30 @@ public class PGVectorStore implements VectorStore {
     }
 
     @Override
-    public void deleteChunksByDocumentId(String documentId) {
-        deleteChunksByDocumentId(documentId, null);
-    }
-
-    public void deleteChunksByDocumentId(String documentId, UUID userId) {
-        if (!dbInitialized || jdbcTemplate == null || documentId == null || documentId.isBlank()) return;
-
+    public void deleteChunksBySourceType(SourceType sourceType, UUID userId) {
+        if (jdbcTemplate == null || sourceType == null || userId == null) return;
         try {
-            if (userId != null) {
-                String sql = "DELETE FROM " + tableName + " WHERE document_id = ? AND user_id = ?;";
-                int count = jdbcTemplate.update(sql, documentId, userId);
-                log.info("[PGVectorStore] Deleted {} stale vector chunks for document_id '{}' (User: {})", count, documentId, userId);
-            } else {
-                String sql = "DELETE FROM " + tableName + " WHERE document_id = ?;";
-                int count = jdbcTemplate.update(sql, documentId);
-                log.info("[PGVectorStore] Deleted {} stale vector chunks for document_id '{}'", count, documentId);
-            }
+            String sql = "DELETE FROM " + tableName + " WHERE source_type = ? AND user_id = ?;";
+            int count = jdbcTemplate.update(sql, sourceType.name(), userId);
+            log.info("[PGVectorStore] Deleted {} stale vector chunks for source_type '{}' (User: {})", count, sourceType, userId);
         } catch (Exception e) {
-            log.error("[PGVectorStore] Error deleting vector chunks for document_id '{}'", documentId, e);
+            log.error("[PGVectorStore] Error deleting vector chunks for source_type '{}'", sourceType, e);
         }
     }
 
     @Override
     public void clearStore() {
-        if (!dbInitialized || jdbcTemplate == null) return;
+        if (jdbcTemplate == null) return;
         try {
             jdbcTemplate.execute("TRUNCATE TABLE " + tableName + ";");
-            log.info("[PGVectorStore] Cleared all vector chunks from table '{}'", tableName);
+            log.info("[PGVectorStore] Cleared all vector chunks");
         } catch (Exception e) {
-            log.error("[PGVectorStore] Error clearing table '{}'", tableName, e);
+            log.error("[PGVectorStore] Error clearing table", e);
         }
     }
 
     public void clearStoreForUser(UUID userId) {
-        if (!dbInitialized || jdbcTemplate == null || userId == null) return;
+        if (jdbcTemplate == null || userId == null) return;
         try {
             String sql = "DELETE FROM " + tableName + " WHERE user_id = ?;";
             int count = jdbcTemplate.update(sql, userId);
@@ -269,17 +188,12 @@ public class PGVectorStore implements VectorStore {
 
     @Override
     public int totalIndexedChunks() {
-        if (!dbInitialized || jdbcTemplate == null) return 0;
+        if (jdbcTemplate == null) return 0;
         try {
             Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + tableName, Integer.class);
             return count != null ? count : 0;
         } catch (Exception e) {
             return 0;
         }
-    }
-
-    private String formatVectorSql(float[] vector) {
-        if (vector == null) return "[]";
-        return Arrays.toString(vector);
     }
 }

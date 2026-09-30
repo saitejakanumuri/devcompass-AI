@@ -55,7 +55,7 @@ public class AccountConfigController {
         @AuthenticationPrincipal AuthenticatedUser principal
     ) {
         UUID userId = principal.userId();
-        List<AccountKnowledgeConfig> configs = configRepository.getEffectiveConfigsForAccountAndUser(userId, userId);
+        List<AccountKnowledgeConfig> configs = configRepository.getConfigsForUser(userId);
         return ResponseEntity.ok(configs);
     }
 
@@ -75,7 +75,7 @@ public class AccountConfigController {
             return ResponseEntity.badRequest().body(Map.of("status", "FAILED", "message", "Invalid source type: " + sourceType));
         }
 
-        AccountKnowledgeConfig saved = configRepository.saveOrUpdateUserConfig(userId, userId, type, configJson, "CONFIGURED");
+        AccountKnowledgeConfig saved = configRepository.saveOrUpdateConfig(userId, type, configJson, "CONFIGURED");
 
         IngestionResult syncResult = null;
         if (autoSync) {
@@ -106,7 +106,7 @@ public class AccountConfigController {
             return ResponseEntity.badRequest().body(Map.of("status", "FAILED", "message", "Invalid source type: " + sourceType));
         }
 
-        Optional<AccountKnowledgeConfig> configOpt = configRepository.getConfigForAccountUserAndType(userId, userId, type);
+        Optional<AccountKnowledgeConfig> configOpt = configRepository.getConfigForUserAndType(userId, type);
         if (configOpt.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of(
                 "status", "FAILED",
@@ -137,35 +137,15 @@ public class AccountConfigController {
     }
 
     private List<Document> fetchDocuments(UUID userId, SourceType type) {
-        Optional<AccountKnowledgeConfig> configOpt = configRepository.getConfigForAccountUserAndType(userId, userId, type);
+        Optional<AccountKnowledgeConfig> configOpt = configRepository.getConfigForUserAndType(userId, type);
         if (configOpt.isEmpty()) return List.of();
 
         Map<String, Object> cfg = configOpt.get().configJson();
 
         return switch (type) {
-            case GIT_REPOSITORY -> {
-                String repoUrl = str(cfg, "repoUrl", "");
-                String repoPath = str(cfg, "repoPath", "./");
-                String branch = str(cfg, "branch", "main");
-                String exts = str(cfg, "includedExtensions", "java,ts,tsx,py,go,rs,yml,yaml,md,json");
-                long maxSize = 500;
-                try { maxSize = Long.parseLong(str(cfg, "maxFileSizeKb", "500")); } catch (Exception ignored) {}
-                gitSource.updateConfig(repoUrl, repoPath, branch, exts, maxSize);
-                yield gitSource.sync();
-            }
-            case NOTION -> {
-                String token = str(cfg, "apiToken", str(cfg, "apiKey", str(cfg, "token", "")));
-                String pageId = str(cfg, "mainPageId", str(cfg, "databaseId", ""));
-                notionSource.updateConfig(token, pageId);
-                yield notionSource.sync();
-            }
-            case DATABASE_METADATA -> {
-                String url = str(cfg, "url", "");
-                String username = str(cfg, "username", "");
-                String password = str(cfg, "password", "");
-                dbSource.updateConfig(url, username, password);
-                yield dbSource.sync();
-            }
+            case GIT_REPOSITORY -> gitSource.sync(cfg);
+            case NOTION -> notionSource.sync(cfg);
+            case DATABASE_METADATA -> dbSource.sync(cfg);
             default -> List.of();
         };
     }

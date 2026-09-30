@@ -107,7 +107,7 @@ export const SettingsPage: React.FC = () => {
       <div className="config-card">
         <h3>Git Repository Configuration</h3>
         <div className="form-group">
-          <label>Repository URL</label>
+          <label>Public Repository URL</label>
           <input type="text" value={gitUrl} onChange={e => setGitUrl(e.target.value)} className="form-input" placeholder="https://github.com/org/repo.git" />
         </div>
         <div className="form-group">

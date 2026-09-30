@@ -14,8 +14,13 @@ import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Component("ollamaEmbeddingProvider")
 public class OllamaEmbeddingProvider implements EmbeddingProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(OllamaEmbeddingProvider.class);
 
     private final String baseUrl;
     private final String model;
@@ -63,7 +68,7 @@ public class OllamaEmbeddingProvider implements EmbeddingProvider {
                 }
             }
         } catch (Exception e) {
-            // Log fallback when Ollama daemon is offline or model nomic-embed-text is pull-pending
+            log.error("[OllamaEmbeddingProvider] Failed to generate embedding from Ollama (is it running? did you pull nomic-embed-text?): {}", e.getMessage());
         }
 
         return fallbackHashVector(text);

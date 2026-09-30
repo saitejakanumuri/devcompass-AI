@@ -47,11 +47,11 @@ public class IngestionPipelineService {
         int totalEmbeddings = 0;
         List<Chunk> allChunks = new ArrayList<>();
 
+        // Purge all old chunks for this source type and user before syncing the fresh batch
+        vectorStore.deleteChunksBySourceType(sourceType, userId);
+
         for (Document doc : documents) {
             String docId = (doc.sourceId() != null && !doc.sourceId().isBlank()) ? doc.sourceId() : doc.id();
-
-            // Remove old chunks for this document
-            vectorStore.deleteChunksByDocumentId(docId);
 
             List<String> sections = chunkGenerator.splitIntoSections(doc);
             int chunkIndex = 0;
@@ -76,7 +76,7 @@ public class IngestionPipelineService {
             }
         }
 
-        vectorStore.saveChunks(allChunks);
+        vectorStore.saveChunks(allChunks,userId);
         logs.add("Indexed " + totalChunks + " chunks with " + totalEmbeddings + " embeddings.");
         logs.add("Status: SUCCESS");
 

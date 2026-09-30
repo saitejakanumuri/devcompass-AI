@@ -94,16 +94,8 @@ public class GeminiProvider implements AIProvider {
 
         log.warn("[GeminiProvider] Returning static fallback synthesis response.");
         return """
-            [Google Gemini 1.5 Flash Analysis]
-            
-            Synthesizing retrieved system knowledge for developer query: "%s"
-            
-            Key Insights from Knowledge Base:
-            - **Architecture**: Spring Boot backend connected to pgvector vector store and Redis cache.
-            - **Flow**: Direct API routing with schema validation and automated citation tracking.
-            - **Retrieved Context Highlights**:
-              %s
-            """.formatted(question, context.length() > 300 ? context.substring(0, 300) + "..." : context);
+            Gemini Temporary failure, Please retry after sometime!
+            """;
     }
 
     private boolean isApiKeyConfigured() {

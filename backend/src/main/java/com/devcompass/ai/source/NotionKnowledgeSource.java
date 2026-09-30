@@ -4,8 +4,6 @@ import com.devcompass.ai.model.Document;
 import com.devcompass.ai.model.SourceType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -18,7 +16,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -27,52 +24,30 @@ public class NotionKnowledgeSource implements KnowledgeSource {
 
     private static final Logger log = LoggerFactory.getLogger(NotionKnowledgeSource.class);
 
-    private String apiKey;
-    private String mainPageId;
     private final RestTemplate restTemplate;
 
     public NotionKnowledgeSource() {
-        this("demo-key", "");
-    }
-
-    @Autowired
-    public NotionKnowledgeSource(
-        @Value("${devcompass.sources.notion.api-key:demo-key}") String apiKey,
-        @Value("${devcompass.sources.notion.main-page-id:}") String mainPageId
-    ) {
-        this.apiKey = apiKey;
-        this.mainPageId = mainPageId;
         this.restTemplate = new RestTemplate();
     }
 
-    /**
-     * Update Notion credentials at runtime for per-account sync.
-     */
-    public void updateConfig(String apiToken, String pageOrDatabaseId) {
-        if (apiToken != null && !apiToken.isBlank()) {
-            this.apiKey = apiToken;
-        }
-        if (pageOrDatabaseId != null && !pageOrDatabaseId.isBlank()) {
-            this.mainPageId = pageOrDatabaseId;
-        }
+
+
+    private String getApiKey(Map<String, Object> config) {
+        return str(config, "apiToken", str(config, "apiKey", str(config, "token", "")));
     }
 
-    public Optional<String> validateConfig() {
-        if (apiKey == null || apiKey.isBlank() || apiKey.equalsIgnoreCase("demo-key")) {
-            return Optional.of("Notion API Key is missing or unconfigured.");
-        }
-        if (mainPageId == null || mainPageId.isBlank() || mainPageId.equalsIgnoreCase("demo-key")) {
-            return Optional.of("Notion Main Page ID is unconfigured.");
-        }
-        return Optional.empty();
+    private String getMainPageId(Map<String, Object> config) {
+        return str(config, "mainPageId", str(config, "databaseId", ""));
     }
-
 
     @Override
-    public List<Document> sync() {
+    public List<Document> sync(Map<String, Object> config) {
+        String apiKey = getApiKey(config);
+        String mainPageId = getMainPageId(config);
+
         if (apiKey != null && !apiKey.isBlank() && !apiKey.equalsIgnoreCase("demo-key")) {
             try {
-                List<Document> liveDocs = fetchLiveNotionDocuments();
+                List<Document> liveDocs = fetchLiveNotionDocuments(apiKey, mainPageId);
                 if (liveDocs != null && !liveDocs.isEmpty()) {
                     log.info("Returning {} live Notion documents originating from configured main page ID.", liveDocs.size());
                     return liveDocs;
@@ -86,47 +61,8 @@ public class NotionKnowledgeSource implements KnowledgeSource {
         return new ArrayList<>();
     }
 
-    public Document fetchSinglePageDocument(String rawPageId) {
-        if (apiKey == null || apiKey.isBlank() || apiKey.equalsIgnoreCase("demo-key")) {
-            return null;
-        }
-
-        String pageId = formatNotionUuid(rawPageId);
-        HttpHeaders headers = createNotionHeaders();
-        String pageUrl = "https://api.notion.com/v1/pages/" + pageId;
-        HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
-
-        try {
-            ResponseEntity<Map> response = restTemplate.exchange(pageUrl, HttpMethod.GET, requestEntity, Map.class);
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                Map page = response.getBody();
-                String title = extractPageTitle(page);
-                String content = fetchPageBlockContent(pageId, headers, new HashSet<>(), 0);
-                String lastEditedTime = page.get("last_edited_time") != null ? page.get("last_edited_time").toString() : "";
-
-                return new Document(
-                    UUID.randomUUID().toString(),
-                    title,
-                    "notion-page-" + pageId,
-                    SourceType.NOTION,
-                    content,
-                    Map.of(
-                        "notionPageId", pageId,
-                        "url", page.get("url") != null ? page.get("url").toString() : "",
-                        "lastEditedTime", lastEditedTime,
-                        "source", "Live Notion REST API Webhook"
-                    )
-                );
-            }
-        } catch (Exception e) {
-            log.error("Error fetching single Notion page {}: {}", pageId, e.getMessage());
-        }
-
-        return null;
-    }
-
-    private List<Document> fetchLiveNotionDocuments() {
-        HttpHeaders headers = createNotionHeaders();
+    private List<Document> fetchLiveNotionDocuments(String apiKey, String mainPageId) {
+        HttpHeaders headers = createNotionHeaders(apiKey);
         List<Document> documents = new ArrayList<>();
         Set<String> visitedPages = new HashSet<>();
 
@@ -135,7 +71,7 @@ public class NotionKnowledgeSource implements KnowledgeSource {
             log.info("Confining Notion crawl strictly to configured Main Page ID: {} and its linked child pages...", formattedRootId);
             crawlNotionPageRecursively(formattedRootId, headers, visitedPages, documents);
         } else {
-            log.warn("Option A Active: 'devcompass.sources.notion.main-page-id' is not configured in application.yml. Specify page ID to crawl.");
+            log.warn("Notion main page id is not configured. Specify page ID to crawl.");
         }
 
         log.info("Successfully crawled {} documents strictly from configured Notion main page hierarchy.", documents.size());
@@ -299,7 +235,7 @@ public class NotionKnowledgeSource implements KnowledgeSource {
         return rawId;
     }
 
-    private HttpHeaders createNotionHeaders() {
+    private HttpHeaders createNotionHeaders(String apiKey) {
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer " + apiKey);
         headers.set("Notion-Version", "2022-06-28");
@@ -313,12 +249,13 @@ public class NotionKnowledgeSource implements KnowledgeSource {
     }
 
     @Override
-    public String sourceName() {
+    public String sourceName(Map<String, Object> config) {
         return "Notion Engineering Knowledge Workspace";
     }
 
     @Override
-    public boolean isHealthy() {
+    public boolean isHealthy(Map<String, Object> config) {
+        String apiKey = getApiKey(config);
         return apiKey != null && !apiKey.isBlank();
     }
 }

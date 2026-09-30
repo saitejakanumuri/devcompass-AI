@@ -29,15 +29,15 @@ public class QueryEngineService {
         this.providerFactory = providerFactory;
     }
 
-    public QueryResponse executeQuery(QueryRequest request) {
+    public QueryResponse executeQuery(QueryRequest request,UUID userId) {
         long startTime = System.currentTimeMillis();
-        log.info("[QueryEngine] Processing: '{}' provider='{}'", request.question(), request.provider());
+        log.info("[QueryEngine] Processing: '{}' provider='{}' for userId='{}'", request.question(), request.provider(), userId);
 
         int topK = request.topK() != null ? request.topK() : 5;
 
         // 1. Similarity search on indexed embeddings
         List<Chunk> retrievedChunks = vectorStore.similaritySearch(
-            request.question(), topK, MIN_RELEVANCE_THRESHOLD
+            request.question(), topK, MIN_RELEVANCE_THRESHOLD, userId
         );
         log.info("[QueryEngine] Retrieved {} chunks", retrievedChunks.size());
 
@@ -64,9 +64,9 @@ public class QueryEngineService {
         String context = contextBuilder.toString();
 
         // 3. Build system prompt
-        String systemPrompt = request.systemPromptOverride() != null ? request.systemPromptOverride() :
+        String systemPrompt =
             """
-            You are DevCompass AI, a helpful engineering assistant.
+            You are Similar Google NotebookLLM AI, a helpful engineering assistant.
             Answer the user's question using ONLY the provided context.
             If the context is insufficient, say so clearly. Do not guess.
             """;
