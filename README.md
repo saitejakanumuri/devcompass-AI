@@ -1,6 +1,6 @@
-# Your Local LLM
+# YourOwnNoteBookLLM
 
-Your Local LLM is a streamlined, user-centric Retrieval-Augmented Generation (RAG) platform that works similarly to NotebookLM. Instead of being an enterprise application with multi-tenant company roles, it allows individual users to directly plug in their own engineering knowledge sources (e.g., local repository paths, database connection strings, and Notion API Keys/Page IDs). It automatically processes these sources into vector embeddings and lets you query them using a powerful LLM via a clean, simple chat interface.
+YourOwnNoteBookLLM is a streamlined, user-centric Retrieval-Augmented Generation (RAG) platform that works similarly to NotebookLM.It allows individual users to directly plug in their own engineering knowledge sources (e.g., Public repository paths, database connection strings, and Notion API Keys/Page IDs). It automatically processes these sources into vector embeddings and lets you query them using a powerful LLM via a clean, simple chat interface.
  
 ## 🚀 Features
 
@@ -57,7 +57,7 @@ your-local-llm/
     └── package.json
 ```
 
-## 🚀 Getting Started
+## 🚀 Getting Started   
 
 ### Prerequisites
 - Java 21
@@ -68,6 +68,12 @@ your-local-llm/
 ### Backend Setup
 
 1. **Configure Properties**: Open `backend/src/main/resources/application.yml` and configure your database and API keys (Gemini, Notion, etc.).
+
+### local Ollama model run
+  ```bash
+     ollama serve
+     ollama pull nomic-embed-text
+  ```
 2. **Build and Run**:
    ```bash
    cd backend
@@ -101,7 +107,7 @@ your-local-llm/
 ---
 
 **Note:** This application shows the NotebookLM for Developers  — a highly flexible, user-level framework where you can easily plug in the following available sources:
-- **Local Repository Path**
+- **Public Repository Url**
 - **Database Connection String**
 - **Notion API-KEY and Main-Page-ID**
 
