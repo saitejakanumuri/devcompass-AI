@@ -1,6 +1,6 @@
-# YourOwnNoteBookLLM
+# RAG powered Knowledge Assistant
 
-YourOwnNoteBookLLM is a streamlined, user-centric Retrieval-Augmented Generation (RAG) platform that works similarly to NotebookLM.It allows individual users to directly plug in their own engineering knowledge sources (e.g., Public repository paths, database connection strings, and Notion API Keys/Page IDs). It automatically processes these sources into vector embeddings and lets you query them using a powerful LLM via a clean, simple chat interface.
+RAG powered Knowledge Assistant is a streamlined, user-centric Retrieval-Augmented Generation (RAG) platform that works similarly to NotebookLM.It allows individual users to directly plug in their own engineering knowledge sources (e.g., Public repository paths, database connection strings, and Notion API Keys/Page IDs). It automatically processes these sources into vector embeddings and lets you query them using a powerful LLM via a clean, simple chat interface.
  
 ## 🚀 Features
 
